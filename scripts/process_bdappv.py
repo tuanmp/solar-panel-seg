@@ -94,20 +94,22 @@ def main() -> None:
     errors = 0
 
     for mask_path, provider in mask_files:
-        stem = mask_path.stem
+        raw_stem = mask_path.stem
+        # Prefix with provider to avoid collisions (5,658 stems overlap google/ign)
+        stem = f"{provider[:1]}_{raw_stem}"
 
-        img_path = find_image(stem, raw_dir / provider)
+        img_path = find_image(raw_stem, raw_dir / provider)
         if img_path is None:
             skipped_missing_image += 1
             continue
 
         try:
-            # Convert mask → {stem}_semantic.png + {stem}_instance.png (in tmp_dir)
+            # Convert mask → {raw_stem}_semantic.png + {raw_stem}_instance.png
             bdappv_mask_to_labelmaps(mask_path, tmp_dir)
 
-            # Sort into expected subdirectories
-            sem_src = tmp_dir / f"{stem}_semantic.png"
-            inst_src = tmp_dir / f"{stem}_instance.png"
+            # Sort into expected subdirectories using provider-prefixed stem
+            sem_src = tmp_dir / f"{raw_stem}_semantic.png"
+            inst_src = tmp_dir / f"{raw_stem}_instance.png"
             sem_src.rename(sem_dir / f"{stem}_semantic.png")
             inst_src.rename(inst_dir / f"{stem}_instance.png")
 
