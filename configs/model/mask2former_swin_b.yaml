@@ -1,4 +1,4 @@
-# @package _group_
+# @package model
 model_name: facebook/mask2former-swin-base-coco-panoptic
 learning_rate: 1.0e-4
 weight_decay: 0.05

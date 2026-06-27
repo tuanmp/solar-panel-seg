@@ -1,7 +1,7 @@
 defaults:
-  - ../data: bdappv
-  - ../model: mask2former_swin_b
-  - ../trainer: base
+  - data: bdappv
+  - model: mask2former_swin_b
+  - trainer: base
   - _self_
 
 seed: 42

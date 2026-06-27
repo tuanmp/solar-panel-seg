@@ -1,0 +1,24 @@
+data:
+  data_root: data/processed/bdappv
+  batch_size: 8
+  num_workers: 4
+  val_split: 0.15
+model:
+  model_name: facebook/mask2former-swin-base-coco-panoptic
+  learning_rate: 0.0001
+  weight_decay: 0.05
+  warmup_steps: 1000
+  num_labels: 2
+trainer:
+  max_epochs: 50
+  accelerator: auto
+  devices: 1
+  deterministic: true
+  precision: bf16-mixed
+  log_every_n_steps: 10
+  enable_progress_bar: true
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+seed: 42
+experiment_name: bdappv_only
+mlflow_tracking_uri: mlruns
