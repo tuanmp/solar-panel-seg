@@ -1,12 +1,15 @@
 UV := uv
 
-.PHONY: sync train test lint format
+.PHONY: sync train test lint format train_solar
 
 sync:
 	$(UV) sync --group dev
 
 train:
-	$(UV) run python train.py --config configs/default.yaml
+	$(UV) run python -m solar_seg.train
+
+train_solar:
+	$(UV) run python -m solar_seg.train
 
 test:
 	$(UV) run pytest
