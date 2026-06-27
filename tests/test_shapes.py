@@ -1,26 +1,24 @@
-import torch
-
-from ml_cookbook.data.dummy_datamodule import DummyDataModule
-from ml_cookbook.models.prototype_model import PrototypeModel
-
-
-def test_dummy_batch_shapes() -> None:
-    dm = DummyDataModule(batch_size=4, input_shape=(3, 32, 32), num_classes=10)
-    dm.setup("fit")
-    x, y = next(iter(dm.train_dataloader()))
-
-    assert x.shape == (4, 3, 32, 32)
-    assert y.shape == (4,)
-    assert y.dtype == torch.long
+import numpy as np
+from solar_seg.data.preprocessing.augmentations import (
+    training_transforms,
+    validation_transforms,
+)
 
 
-def test_model_forward_shape() -> None:
-    model = PrototypeModel(
-        input_shape=(3, 32, 32),
-        hidden_dim=32,
-        num_classes=10,
-    )
-    x = torch.randn(4, 3, 32, 32)
-    logits = model(x)
+def test_training_augmentation_shapes():
+    image = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
+    mask = np.random.randint(0, 2, (400, 400), dtype=np.uint8)
 
-    assert logits.shape == (4, 10)
+    train_aug = training_transforms(384)
+    result = train_aug(image=image, mask=mask)
+    assert result["image"].shape == (3, 384, 384)
+    assert result["mask"].shape == (384, 384)
+
+
+def test_validation_augmentation_shapes():
+    image = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
+    mask = np.random.randint(0, 2, (400, 400), dtype=np.uint8)
+
+    val_aug = validation_transforms()
+    result = val_aug(image=image, mask=mask)
+    assert result["image"].shape == (3, 400, 400)
