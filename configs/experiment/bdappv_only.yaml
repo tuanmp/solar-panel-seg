@@ -1,0 +1,9 @@
+defaults:
+  - /data: bdappv
+  - /model: mask2former_swin_b
+  - /trainer: base
+  - _self_
+
+seed: 42
+experiment_name: bdappv_only
+mlflow_tracking_uri: mlruns
