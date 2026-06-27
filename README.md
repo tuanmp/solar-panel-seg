@@ -23,7 +23,7 @@ uv sync --group dev
 uv run pytest
 
 # Train (requires preprocessed data)
-uv run python -m solar_seg.train --config-name experiment/bdappv_only
+uv run python -m solar_seg.train
 ```
 
 ## Project Structure
@@ -114,7 +114,6 @@ uv run python -m solar_seg.train
 
 # Override any config value from CLI
 uv run python -m solar_seg.train \
-    --config-name experiment/bdappv_only \
     model=mask2former_swin_t \
     trainer.max_epochs=100 \
     data.batch_size=16
@@ -146,7 +145,11 @@ All training parameters live in composable Hydra YAML configs under `configs/`:
 | `data` | `bradbury.yaml` | Bradbury dataset paths |
 | `model` | `mask2former_swin_{t,b,l}.yaml` | Backbone size, learning rate, warmup |
 | `trainer` | `base.yaml` | Epochs, precision (`bf16-mixed`), devices |
-| `experiment` | `bdappv_only.yaml` | Compose default experiment |
+| (root) | `default.yaml` | Default experiment (BDAPPV, Swin-B, 50 epochs) |
+| (root) | `combined.yaml` | BDAPPV + Bradbury |
+| (root) | `cross_provider.yaml` | Google/IGN provider split |
+
+Use `--config-name combined` to switch experiments.
 
 ## Requirements
 

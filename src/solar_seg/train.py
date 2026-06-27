@@ -21,7 +21,7 @@ from solar_seg.models.mask2former_module import Mask2FormerModule
 
 @hydra.main(
     config_path="../../configs",
-    config_name="bdappv_only",
+    config_name="default",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
