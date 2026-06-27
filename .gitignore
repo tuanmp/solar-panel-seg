@@ -13,6 +13,8 @@ venv/
 logs/
 lightning_logs/
 checkpoints/
+mlruns/
+outputs/
 
 # OS/editor
 .DS_Store
