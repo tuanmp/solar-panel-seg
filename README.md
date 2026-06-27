@@ -65,7 +65,10 @@ uv run python -m solar_seg.train --config-name experiment/bdappv_only
 Raw 5000×5000 orthoimages are tiled into 400×400 crops centered on each annotation polygon, producing the model inputs, semantic masks, and instance masks:
 
 ![Bradbury preprocessing pipeline](figures/bradbury_pipeline.png)
-*Generating pipeline figures: `uv run python scripts/visualize_bradbury_pipeline.py`*
+*Single-instance pipeline: `uv run python scripts/visualize_bradbury_pipeline.py`*
+
+![Multi-instance example](figures/multi_instance.png)
+*Multi-instance overview (7 panels from `11ska400710`): `uv run python scripts/visualize_multi_instance.py`*
 
 Download and preprocess:
 
