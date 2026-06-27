@@ -73,17 +73,25 @@ Raw 5000×5000 orthoimages are tiled into 400×400 crops centered on each annota
 Download and preprocess:
 
 ```bash
-# BDAPPV (8.17 GB)
-curl -L https://zenodo.org/api/records/7358126/files/bdappv.zip/content -o bdappv.zip
-unzip bdappv.zip -d data/raw/bdappv
+# BDAPPV (~8.2 GB) — download + extract
+uv run python scripts/download_bdappv.py
 
-# Preprocess masks
-python -c "
-from solar_seg.data.preprocessing.mask_converter import bdappv_mask_to_labelmaps
-from pathlib import Path
-for mask in Path('data/raw/bdappv/bdappv').rglob('*/mask/*.png'):
-    bdappv_mask_to_labelmaps(mask, Path('data/processed/bdappv'))
-"
+# Convert binary masks → semantic (0/255) + instance (connected-components) masks
+# and organize into dataset-expected layout
+uv run python scripts/process_bdappv.py
+
+# Full run with progress: ~21K tiles from Google (13K) + IGN (8K) providers
+# Test with: uv run python scripts/process_bdappv.py --limit 100
+```
+
+Bradbury et al. (2016):
+
+```bash
+# Download annotation CSVs, GeoJSON, and orthoimage TIFs (Fresno/Stockton/Oxnard/Modesto)
+uv run python scripts/download_bradbury.py
+
+# Extract 400×400 tiles from orthoimages using polygon annotations
+uv run python scripts/process_bradbury.py
 ```
 
 ### Live API Acquisition
