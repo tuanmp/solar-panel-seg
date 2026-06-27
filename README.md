@@ -43,9 +43,11 @@ uv run python -m solar_seg.train --config-name experiment/bdappv_only
 │   ├── evaluation/           # PQ/SQ/RQ metrics, visualization, ablations
 │   ├── utils/                # Seed, reproducibility
 │   └── train.py              # Hydra + MLflow training entry point
+├── figures/                  # Pipeline visualization figure
 ├── notebooks/
 │   ├── 01_eda.ipynb          # Dataset exploration
 │   └── 02_results.ipynb      # Results analysis
+├── scripts/                  # Download, preprocessing, visualization
 └── tests/                    # 31 tests across all modules
 ```
 
@@ -57,6 +59,13 @@ uv run python -m solar_seg.train --config-name experiment/bdappv_only
 |---------|----------|--------|-------|-----------|---------|
 | [BDAPPV](https://zenodo.org/record/7358126) (Kasmi 2023) | France | 46K | 21K | 0.1-0.2m GSD | CC-BY 4.0 |
 | [Bradbury](https://doi.org/10.6084/m9.figshare.3385780.v4) (2016) | California | 601 tiles | 19.8K | 0.3m GSD | CC0 |
+
+### Preprocessing Pipeline
+
+Raw 5000×5000 orthoimages are tiled into 400×400 crops centered on each annotation polygon, producing the model inputs, semantic masks, and instance masks:
+
+![Bradbury preprocessing pipeline](figures/bradbury_pipeline.png)
+*Generating pipeline figures: `uv run python scripts/visualize_bradbury_pipeline.py`*
 
 Download and preprocess:
 
