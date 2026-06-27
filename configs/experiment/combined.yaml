@@ -1,3 +1,4 @@
+# Train on BDAPPV Google images, evaluate on Bradbury CA images
 defaults:
   - /data: bdappv
   - /model: mask2former_swin_b
@@ -7,3 +8,6 @@ defaults:
 seed: 42
 experiment_name: combined_bdappv_bradbury
 mlflow_tracking_uri: mlruns
+comment: >
+  When Bradbury data is available, override data_root:
+  python -m solar_seg.train data.data_root=data/processed/bradbury

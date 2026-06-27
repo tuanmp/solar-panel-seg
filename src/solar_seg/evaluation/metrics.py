@@ -85,7 +85,7 @@ def panoptic_quality(
 
     sq = sq_sum / max(matched_pairs, 1)
     rq = matched_pairs / max((total_pred + total_target) / 2.0, 1)
-    pq = pq_sum / max(matched_pairs, 1)
+    pq = sq_sum / max((total_pred + total_target) / 2.0, 1)
 
     return {"pq": float(pq), "sq": float(sq), "rq": float(rq)}
 

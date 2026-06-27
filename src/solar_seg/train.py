@@ -21,11 +21,10 @@ from solar_seg.models.mask2former_module import Mask2FormerModule
 
 @hydra.main(
     config_path="../../configs",
-    config_name="experiment/bdappv_only",
+    config_name=None,
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
-    import lightning as L
     L.seed_everything(seed=cfg.seed, workers=True)
 
     data_cfg = cfg.data
