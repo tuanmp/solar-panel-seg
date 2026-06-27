@@ -1,95 +1,144 @@
-# ML Cookbook Project
+# Solar Panel Panoptic Segmentation
 
-[![CI](https://github.com/tuanmp/ml-cookbook-project/actions/workflows/ci.yml/badge.svg)](https://github.com/tuanmp/ml-cookbook-project/actions/workflows/ci.yml)
+[![CI](https://github.com/tuanmp/solar-panel-seg/actions/workflows/ci.yml/badge.svg)](https://github.com/tuanmp/solar-panel-seg/actions/workflows/ci.yml)
 
-Repository / Depot: [https://github.com/tuanmp/ml-cookbook-project](https://github.com/tuanmp/ml-cookbook-project)
+End-to-end deep learning pipeline for panoptic segmentation of solar photovoltaic panels from satellite and aerial imagery. Built with PyTorch Lightning, HuggingFace Transformers (Mask2Former), Hydra, and MLflow.
 
-Template de prototypage ML avec PyTorch + Lightning, base sur `uv`.
-ML prototyping template with PyTorch + Lightning, powered by `uv`.
+## Features
 
-## Objectif / Goal
-
-Ce projet sert de socle pour:
-This project is a starter kit to:
-
-1. valider rapidement une boucle d entrainement avec donnees factices,
-1. quickly validate a training loop with dummy data,
-1. iterer sur l architecture du modele,
-1. iterate on model architecture,
-1. basculer vers des donnees reelles sans casser la plomberie.
-1. switch to real data without breaking the training plumbing.
+- **Satellite API acquisition** — query Google Earth Engine (NAIP 1m) and Sentinel Hub (Sentinel-2 10m) via Python clients
+- **Multi-dataset support** — BDAPPV (France, 21K masks) and Bradbury et al. (California, 20K annotations)
+- **Mask2Former fine-tuning** — Swin transformer backbone with panoptic segmentation head, pre-trained on COCO
+- **Panoptic quality metrics** — PQ, SQ, RQ, and mIoU evaluation
+- **Experiment tracking** — Hydra config management + MLflow logging
+- **Reproducible pipelines** — DVC for data versioning, seed control throughout
 
 ## Quick Start
 
 ```bash
-make sync
-make test
-make train
-```
-
-Equivalent sans Makefile:
-Equivalent without Makefile:
-
-```bash
+# Install dependencies
 uv sync --group dev
+
+# Run tests (31 tests, no GPU needed)
 uv run pytest
-uv run python train.py --config configs/default.yaml
+
+# Train (requires preprocessed data)
+uv run python -m solar_seg.train --config-name experiment/bdappv_only
 ```
 
-## Structure Essentielle / Core Structure
+## Project Structure
 
 ```text
 .
-├── pyproject.toml
-├── uv.lock
-├── train.py
-├── configs/default.yaml
-├── src/ml_cookbook/
-│   ├── train.py
-│   ├── data/dummy_datamodule.py
-│   ├── models/prototype_model.py
-│   └── utils/repro.py
-└── tests/
-    ├── test_shapes.py
-    └── test_train_smoke.py
+├── configs/
+│   ├── data/           # BDAPPV / Bradbury dataset configs
+│   ├── model/          # Swin-T, Swin-B, Swin-L variants
+│   ├── trainer/        # Epochs, precision, accelerator
+│   └── experiment/     # Compose data + model + trainer
+├── src/solar_seg/
+│   ├── data/
+│   │   ├── acquisition/      # GEE + Sentinel Hub API clients
+│   │   └── preprocessing/    # Mask converter, tiling, augmentations, dataset
+│   ├── models/               # Mask2Former LightningModule
+│   ├── evaluation/           # PQ/SQ/RQ metrics, visualization, ablations
+│   ├── utils/                # Seed, reproducibility
+│   └── train.py              # Hydra + MLflow training entry point
+├── notebooks/
+│   ├── 01_eda.ipynb          # Dataset exploration
+│   └── 02_results.ipynb      # Results analysis
+└── tests/                    # 31 tests across all modules
 ```
 
-## Documentation
+## Data Pipeline
 
-- Guide utilisateur complet: `cookbook.md`
-- User guide: `cookbook.md`
-- Config experiment: `configs/default.yaml`
-- Experiment config: `configs/default.yaml`
-- MCP guide and boilerplate: `mcp-playbook.md`
-- Guide MCP et boilerplate: `mcp-playbook.md`
-- MCP Context7 example: `mcp-examples/context7.md`
-- Exemple MCP Context7: `mcp-examples/context7.md`
+### Pre-built Datasets
 
-## Copilot Behavior / Comportement Copilot
+| Dataset | Coverage | Images | Masks | Resolution | License |
+|---------|----------|--------|-------|-----------|---------|
+| [BDAPPV](https://zenodo.org/record/7358126) (Kasmi 2023) | France | 46K | 21K | 0.1-0.2m GSD | CC-BY 4.0 |
+| [Bradbury](https://doi.org/10.6084/m9.figshare.3385780.v4) (2016) | California | 601 tiles | 19.8K | 0.3m GSD | CC0 |
 
-- Repository instructions file: `.github/copilot-instructions.md`
-- Fichier d instructions du repository: `.github/copilot-instructions.md`
-- Keep this file updated when project workflow, quality gates, or conventions change.
-- Mettez ce fichier a jour lorsque le workflow, les controles qualite, ou les conventions changent.
+Download and preprocess:
 
-## Copilot Agents / Agents Copilot
+```bash
+# BDAPPV (8.17 GB)
+curl -L https://zenodo.org/api/records/7358126/files/bdappv.zip/content -o bdappv.zip
+unzip bdappv.zip -d data/raw/bdappv
 
-- Agent files folder: `.github/agents/`
-- Dossier des agents: `.github/agents/`
-- `Code Review`: PR review, bug/regression and risk analysis.
-- `Docs Writer`: README/cookbook updates in French + English.
-- `Test Triage`: diagnose failing tests and CI failures quickly.
-- `Experiment Setup`: prepare reproducible experiment configs.
-- `Dependency Upgrade Planner`: safe dependency upgrades with `uv`.
-- `Performance Profiler`: bottleneck analysis and measurable speedups.
+# Preprocess masks
+python -c "
+from solar_seg.data.preprocessing.mask_converter import bdappv_mask_to_labelmaps
+from pathlib import Path
+for mask in Path('data/raw/bdappv/bdappv').rglob('*/mask/*.png'):
+    bdappv_mask_to_labelmaps(mask, Path('data/processed/bdappv'))
+"
+```
 
-## Commandes Utiles / Useful Commands
+### Live API Acquisition
 
-- `make sync`: installe et verrouille l environnement via uv
-- `make sync`: install and lock the environment via uv
-- `make test`: lance la suite de tests
-- `make test`: run the test suite
-- `make train`: execute un entrainement complet avec la config par defaut
-- `make train`: run full training with the default config
-- `make lint`: verification syntaxique rapide
-- `make lint`: quick syntax check
+Acquire satellite imagery on demand:
+
+```bash
+# GEE — NAIP 1m aerial (US)
+python -m solar_seg.data.acquisition gee --lat 37.77 --lon -122.42 --source naip
+
+# Sentinel Hub — Sentinel-2 10m (global)
+python -m solar_seg.data.acquisition sentinel --lat 48.85 --lon 2.35 --resolution 10
+```
+
+## Training
+
+```bash
+# Default: Swin-B, BDAPPV dataset
+uv run python -m solar_seg.train
+
+# Override any config value from CLI
+uv run python -m solar_seg.train \
+    --config-name experiment/bdappv_only \
+    model=mask2former_swin_t \
+    trainer.max_epochs=100 \
+    data.batch_size=16
+
+# View experiments
+mlflow ui --backend-store-uri mlruns
+```
+
+## Evaluation
+
+```python
+from solar_seg.evaluation.metrics import panoptic_quality, mean_iou
+
+metrics = panoptic_quality(
+    pred_semantic, pred_instance,
+    target_semantic, target_instance,
+    num_classes=2,
+)
+# {"pq": 0.52, "sq": 0.68, "rq": 0.76}
+```
+
+## Configuration
+
+All training parameters live in composable Hydra YAML configs under `configs/`:
+
+| Group | Config | Description |
+|-------|--------|-------------|
+| `data` | `bdappv.yaml` | BDAPPV dataset paths, batch size, workers |
+| `data` | `bradbury.yaml` | Bradbury dataset paths |
+| `model` | `mask2former_swin_{t,b,l}.yaml` | Backbone size, learning rate, warmup |
+| `trainer` | `base.yaml` | Epochs, precision (`bf16-mixed`), devices |
+| `experiment` | `bdappv_only.yaml` | Compose default experiment |
+
+## Requirements
+
+- Python ≥ 3.11
+- PyTorch ≥ 2.2 with CUDA (GPU recommended)
+- HuggingFace Transformers ≥ 4.38 (Mask2Former)
+- Earth Engine account (for GEE acquisition only)
+- Sentinel Hub OAuth credentials (for Sentinel Hub acquisition only)
+
+## References
+
+- Cheng et al. "Masked-attention Mask Transformer for Universal Image Segmentation" (CVPR 2022)
+- Kasmi et al. "A crowdsourced dataset of aerial images with annotated solar photovoltaic arrays" (Scientific Data, 2023)
+- Bradbury et al. "Distributed solar photovoltaic array location and extent dataset" (Scientific Data, 2016)
+- Wang et al. "DeepSolar++: Understanding residential solar adoption trajectories" (Joule, 2022)
