@@ -10,6 +10,64 @@ from torch.utils.data import DataLoader, Dataset
 import lightning as L
 
 
+class _SplitDataset(Dataset):
+    """Internal dataset that loads from a specific list of image paths."""
+
+    def __init__(
+        self,
+        image_paths: list[Path],
+        semantic_mask_dir: Path,
+        instance_mask_dir: Path | None = None,
+        transform: Callable | None = None,
+    ) -> None:
+        self.image_paths = image_paths
+        self.semantic_mask_dir = semantic_mask_dir
+        self.instance_mask_dir = instance_mask_dir
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.image_paths)
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        img_path = self.image_paths[idx]
+        stem = img_path.stem
+        sem_path = self.semantic_mask_dir / f"{stem}_semantic.png"
+
+        image = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        sem_mask = cv2.imread(str(sem_path), cv2.IMREAD_GRAYSCALE)
+        sem_mask = (sem_mask > 0).astype(np.uint8)
+
+        inst_mask = None
+        if self.instance_mask_dir:
+            inst_path = self.instance_mask_dir / f"{stem}_instance.png"
+            if inst_path.exists():
+                inst_mask = cv2.imread(str(inst_path), cv2.IMREAD_UNCHANGED).astype(np.int32)
+                inst_mask = np.ascontiguousarray(inst_mask)
+
+        if self.transform:
+            kwargs = {"image": image, "mask": sem_mask}
+            if inst_mask is not None:
+                kwargs["instance_mask"] = inst_mask
+            transformed = self.transform(**kwargs)
+            image = transformed["image"]
+            sem_mask = transformed["mask"]
+            inst_mask = transformed.get("instance_mask")
+        else:
+            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+            sem_mask = torch.from_numpy(sem_mask).long()
+
+        result = {
+            "pixel_values": image if isinstance(image, torch.Tensor) else torch.from_numpy(np.array(image)),
+            "semantic_mask": sem_mask.long() if isinstance(sem_mask, torch.Tensor) else torch.from_numpy(sem_mask).long(),
+        }
+        if inst_mask is not None:
+            result["instance_mask"] = inst_mask.long() if isinstance(inst_mask, torch.Tensor) else torch.from_numpy(inst_mask).long()
+        result["id"] = stem
+        return result
+
+
 class SolarSegDataset(Dataset):
     """Dataset for solar panel panoptic segmentation.
 
@@ -113,9 +171,9 @@ class SolarSegDataModule(L.LightningDataModule):
         self.semantic_dir = self.data_root / "semantic_masks"
         self.instance_dir = self.data_root / "instance_masks"
 
-        self.train_ds: Dataset | None = None
-        self.val_ds: Dataset | None = None
-        self.test_ds: Dataset | None = None
+        self.train_ds: _SplitDataset | None = None
+        self.val_ds: _SplitDataset | None = None
+        self.test_ds: _SplitDataset | None = None
 
     def setup(self, stage: str | None = None) -> None:
         all_paths = sorted(self.image_dir.glob("*.png"))
@@ -124,18 +182,21 @@ class SolarSegDataModule(L.LightningDataModule):
 
         n_val = max(1, int(len(all_paths) * self.val_split))
         n_train = len(all_paths) - n_val
-        train_paths = list(range(n_train))
-        val_paths = list(range(n_train, n_train + n_val))
+
+        train_paths = all_paths[:n_train]
+        val_paths = all_paths[n_train : n_train + n_val]
 
         if stage in (None, "fit"):
-            self.train_ds = self._make_dataset(self.train_transform)
-            self.val_ds = self._make_dataset(self.val_transform)
+            self.train_ds = self._make_dataset(train_paths, self.train_transform)
+            self.val_ds = self._make_dataset(val_paths, self.val_transform)
         if stage in (None, "test"):
-            self.test_ds = self._make_dataset(self.val_transform)
+            self.test_ds = self._make_dataset(val_paths, self.val_transform)
 
-    def _make_dataset(self, transform: Callable | None) -> SolarSegDataset:
-        return SolarSegDataset(
-            image_dir=self.image_dir,
+    def _make_dataset(
+        self, paths: list[Path], transform: Callable | None
+    ) -> _SplitDataset:
+        return _SplitDataset(
+            image_paths=paths,
             semantic_mask_dir=self.semantic_dir,
             instance_mask_dir=self.instance_dir if self.instance_dir.exists() else None,
             transform=transform,
