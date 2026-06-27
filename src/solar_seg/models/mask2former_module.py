@@ -3,8 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 import lightning as L
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from transformers import Mask2FormerForUniversalSegmentation
+
+from solar_seg.evaluation.visualization import overlay_mask
+
+MAX_VAL_VIZ_SAMPLES = 4
 
 
 class Mask2FormerModule(L.LightningModule):
@@ -27,6 +33,9 @@ class Mask2FormerModule(L.LightningModule):
             ignore_mismatched_sizes=True,
         )
 
+        # Buffer to hold first validation batch for epoch-end visualization
+        self._val_viz_batch: dict[str, torch.Tensor] | None = None
+
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(pixel_values=pixel_values)
 
@@ -44,7 +53,7 @@ class Mask2FormerModule(L.LightningModule):
         class_labels: list[torch.Tensor] = []
 
         for b in range(batch_size):
-            sem = semantic_mask[b]  # (H, W)
+            sem = semantic_mask[b]
             inst = instance_mask[b] if instance_mask is not None else None
 
             batch_masks: list[torch.Tensor] = []
@@ -54,13 +63,12 @@ class Mask2FormerModule(L.LightningModule):
                 unique_ids = torch.unique(inst)
                 unique_ids = unique_ids[unique_ids > 0]
                 for uid in unique_ids:
-                    mask = (inst == uid).float()  # (H, W)
+                    mask = (inst == uid).float()
                     class_id = int(sem[mask > 0].mode().values.item()) if mask.sum() > 0 else 0
                     class_id = max(0, min(class_id, self.hparams.num_labels - 1))
                     batch_masks.append(mask)
                     batch_classes.append(class_id)
             else:
-                # Fallback: treat each connected component in semantic mask as an instance
                 unique_classes = torch.unique(sem)
                 for cls_id in unique_classes:
                     if cls_id == 0:
@@ -71,10 +79,9 @@ class Mask2FormerModule(L.LightningModule):
                         batch_classes.append(int(cls_id))
 
             if batch_masks:
-                mask_labels.append(torch.stack(batch_masks))  # (K, H, W)
+                mask_labels.append(torch.stack(batch_masks))
                 class_labels.append(torch.tensor(batch_classes, dtype=torch.long, device=sem.device))
             else:
-                # No instances — provide an empty tensor with correct spatial dims
                 h, w = sem.shape
                 mask_labels.append(torch.zeros((0, h, w), dtype=torch.float, device=sem.device))
                 class_labels.append(torch.zeros((0,), dtype=torch.long, device=sem.device))
@@ -97,15 +104,34 @@ class Mask2FormerModule(L.LightningModule):
             mask_labels=mask_labels,
             class_labels=class_labels,
         )
-        loss = outputs.loss
+
+        # Log total loss
+        total_loss = outputs.loss
         self.log(
-            f"{stage}_loss",
-            loss,
+            f"{stage}/loss",
+            total_loss,
             prog_bar=True,
             on_epoch=True,
             on_step=False,
         )
-        return loss
+
+        # Log individual loss components
+        loss_dict = self.model.get_loss_dict(
+            outputs.masks_queries_logits,
+            outputs.class_queries_logits,
+            mask_labels,
+            class_labels,
+            outputs.auxiliary_logits,
+        )
+        for key, value in loss_dict.items():
+            self.log(
+                f"{stage}/{key}",
+                value,
+                on_epoch=True,
+                on_step=False,
+            )
+
+        return total_loss
 
     def training_step(
         self,
@@ -119,7 +145,131 @@ class Mask2FormerModule(L.LightningModule):
         batch: dict[str, torch.Tensor],
         batch_idx: int,
     ) -> torch.Tensor:
+        # Store first batch for visualization at epoch end
+        if self._val_viz_batch is None:
+            self._val_viz_batch = {
+                k: v.detach().cpu().clone()
+                for k, v in batch.items()
+                if isinstance(v, torch.Tensor)
+            }
+
         return self._shared_step(batch, "val")
+
+    def on_validation_epoch_end(self) -> None:
+        if self._val_viz_batch is None:
+            return
+
+        try:
+            self._log_prediction_plots()
+        except Exception as e:
+            print(f"Warning: prediction plot generation failed: {e}")
+        finally:
+            self._val_viz_batch = None
+
+    def _log_prediction_plots(self) -> None:
+        """Generate and log prediction plots for the first validation batch."""
+        batch = self._val_viz_batch
+        pixel_values = batch["pixel_values"].to(self.device)
+
+        # Run inference (no labels)
+        with torch.no_grad():
+            outputs = self.model(pixel_values=pixel_values)
+
+        masks_logits = outputs.masks_queries_logits  # (B, Q, H_pred, W_pred)
+        class_logits = outputs.class_queries_logits  # (B, Q, num_labels)
+
+        # Post-process: get binary semantic prediction
+        # Mask2Former predicts per-query masks and classes; we take argmax over class logits
+        pred_classes = class_logits.softmax(dim=-1)
+        # For each query, get its most likely class and confidence
+        pred_scores, pred_class = pred_classes.max(dim=-1)  # (B, Q)
+
+        n_viz = min(MAX_VAL_VIZ_SAMPLES, pixel_values.shape[0])
+        fig, axes = plt.subplots(n_viz, 4, figsize=(16, 4 * n_viz), squeeze=False)
+
+        for i in range(n_viz):
+            img = pixel_values[i].cpu()
+            # Unnormalize (ImageNet stats)
+            mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+            img_vis = img * std + mean
+            img_vis = img_vis.permute(1, 2, 0).numpy()
+            img_vis = np.clip(img_vis, 0, 1)
+
+            # Ground truth semantic mask
+            gt_sem = batch.get("semantic_mask", None)
+            gt_sem_i = gt_sem[i].cpu().numpy() if gt_sem is not None else None
+
+            # Ground truth instance mask
+            gt_inst = batch.get("instance_mask", None)
+            gt_inst_i = gt_inst[i].cpu().numpy() if gt_inst is not None else None
+
+            # Predicted semantic mask: combine query masks for class=1 with score > 0.5
+            bg_score = pred_scores[i]
+            is_panel = pred_class[i] == 1
+            panel_queries = torch.where(is_panel)[0]
+
+            H, W = img_vis.shape[:2]
+            pred_sem = np.zeros((H, W), dtype=np.uint8)
+            pred_inst = np.zeros((H, W), dtype=np.uint16)
+
+            inst_id = 1
+            for q in panel_queries:
+                score = bg_score[q].item()
+                if score < 0.3:
+                    continue
+                mask = masks_logits[i, q].sigmoid()
+                # Resize mask from prediction resolution to image resolution
+                mask = torch.nn.functional.interpolate(
+                    mask.unsqueeze(0).unsqueeze(0),
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
+                ).squeeze()
+                mask_np = (mask.cpu().numpy() > 0.5).astype(np.uint8)
+                pred_sem[mask_np > 0] = 255
+                pred_inst[mask_np > 0] = inst_id
+                inst_id += 1
+
+            # Column 0: Input image
+            axes[i, 0].imshow(img_vis)
+            axes[i, 0].set_title("Input")
+            axes[i, 0].axis("off")
+
+            # Column 1: Ground truth semantic
+            if gt_sem_i is not None:
+                axes[i, 1].imshow(img_vis)
+                gt_overlay = np.zeros_like(img_vis)
+                gt_overlay[gt_sem_i > 0] = [0, 1, 0]
+                axes[i, 1].imshow(gt_overlay, alpha=0.5)
+                axes[i, 1].set_title(f"GT Semantic ({int(gt_sem_i.max())} panels)")
+            else:
+                axes[i, 1].text(0.5, 0.5, "N/A", ha="center", va="center")
+            axes[i, 1].axis("off")
+
+            # Column 2: Predicted semantic
+            axes[i, 2].imshow(img_vis)
+            pred_overlay = np.zeros_like(img_vis)
+            pred_overlay[pred_sem > 0] = [0, 1, 0]
+            axes[i, 2].imshow(pred_overlay, alpha=0.5)
+            axes[i, 2].set_title(f"Pred Semantic ({inst_id-1} panels)")
+            axes[i, 2].axis("off")
+
+            # Column 3: Predicted instance mask (color-coded)
+            axes[i, 3].imshow(pred_inst, cmap="tab20", vmin=0, vmax=20)
+            axes[i, 3].set_title(f"Pred Instances")
+            axes[i, 3].axis("off")
+
+        plt.tight_layout()
+
+        # Log to MLflow
+        if isinstance(self.logger, L.pytorch.loggers.MLFlowLogger):
+            self.logger.experiment.log_figure(
+                self.logger.run_id,
+                fig,
+                f"val_predictions_epoch_{self.current_epoch:03d}.png",
+            )
+            plt.close(fig)
 
     def test_step(
         self,

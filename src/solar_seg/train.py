@@ -55,12 +55,12 @@ def main(cfg: DictConfig) -> None:
 
     callbacks = [
         ModelCheckpoint(
-            monitor="val_loss",
+            monitor="val/loss",
             mode="min",
             save_top_k=1,
-            filename="best-{epoch:02d}-{val_loss:.4f}",
+            filename="best-{epoch:02d}-{val/loss:.4f}",
         ),
-        EarlyStopping(monitor="val_loss", mode="min", patience=5),
+        EarlyStopping(monitor="val/loss", mode="min", patience=5),
         LearningRateMonitor(logging_interval="step"),
     ]
 
