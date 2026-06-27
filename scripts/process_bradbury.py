@@ -35,7 +35,6 @@ import numpy as np
 from skimage import measure
 
 from solar_seg.data.preprocessing.mask_converter import polygons_to_mask, polygons_to_instance_mask
-from solar_seg.data.preprocessing.tile_extractor import extract_tile_around_centroid
 
 
 TILE_SIZE = 400
@@ -204,12 +203,24 @@ def main() -> None:
             if area < args.min_area:
                 continue
 
-            # Extract tile
-            result = extract_tile_around_centroid(
-                tif_path, cx, cy, TILE_SIZE, img_dir, f"{image_name}_{pid}"
-            )
-            if result["image"] is None:
-                continue
+            # Extract tile manually (need controlled filename for mask pairing)
+            half = TILE_SIZE // 2
+            tile = np.zeros((TILE_SIZE, TILE_SIZE, 3), dtype=img.dtype)
+
+            src_x_start = max(0, cx - half)
+            src_y_start = max(0, cy - half)
+            src_x_end = min(w, cx + half)
+            src_y_end = min(h, cy + half)
+
+            dst_x_start = max(0, half - cx)
+            dst_y_start = max(0, half - cy)
+
+            tile_src = img[src_y_start:src_y_end, src_x_start:src_x_end]
+            tile_h, tile_w = tile_src.shape[:2]
+            tile[dst_y_start : dst_y_start + tile_h, dst_x_start : dst_x_start + tile_w] = tile_src
+
+            stem = f"{image_name}_{pid}"
+            cv2.imwrite(str(img_dir / f"{stem}.png"), tile)
 
             # Convert polygon to tile-local coords
             local_poly = polygon_to_tile_local(vertices_full, cx, cy)
@@ -219,8 +230,8 @@ def main() -> None:
             inst_mask = polygons_to_instance_mask(local_poly, tile_shape)
 
             # Save masks
-            cv2.imwrite(str(sem_dir / f"{image_name}_{pid}_semantic.png"), bin_mask * 255)
-            cv2.imwrite(str(inst_dir / f"{image_name}_{pid}_instance.png"), inst_mask.astype(np.uint16))
+            cv2.imwrite(str(sem_dir / f"{stem}_semantic.png"), bin_mask * 255)
+            cv2.imwrite(str(inst_dir / f"{stem}_instance.png"), inst_mask.astype(np.uint16))
 
             tiles_written += 1
 

@@ -16,6 +16,10 @@ checkpoints/
 mlruns/
 outputs/
 
+# Data (large files tracked via DVC)
+data/
+*.zip
+
 # OS/editor
 .DS_Store
 .vscode/
