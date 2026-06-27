@@ -34,9 +34,13 @@ class _SplitDataset(Dataset):
         sem_path = self.semantic_mask_dir / f"{stem}_semantic.png"
 
         image = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
+        if image is None:
+            raise FileNotFoundError(f"Cannot read image: {img_path}")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         sem_mask = cv2.imread(str(sem_path), cv2.IMREAD_GRAYSCALE)
+        if sem_mask is None:
+            raise FileNotFoundError(f"Missing semantic mask: {sem_path}")
         sem_mask = (sem_mask > 0).astype(np.uint8)
 
         inst_mask = None
@@ -85,66 +89,26 @@ class SolarSegDataset(Dataset):
         instance_mask_dir: Path | None = None,
         transform: Callable | None = None,
     ) -> None:
-        self.image_dir = Path(image_dir)
-        self.semantic_mask_dir = Path(semantic_mask_dir)
-        self.instance_mask_dir = Path(instance_mask_dir) if instance_mask_dir else None
-        self.transform = transform
+        image_dir = Path(image_dir)
+        semantic_mask_dir = Path(semantic_mask_dir)
+        instance_mask_dir = Path(instance_mask_dir) if instance_mask_dir else None
 
-        self.image_paths = sorted(self.image_dir.glob("*.png"))
-        if not self.image_paths:
-            raise FileNotFoundError(f"No .png images found in {self.image_dir}")
+        image_paths = sorted(image_dir.glob("*.png"))
+        if not image_paths:
+            raise FileNotFoundError(f"No .png images found in {image_dir}")
+
+        self._impl = _SplitDataset(
+            image_paths=image_paths,
+            semantic_mask_dir=semantic_mask_dir,
+            instance_mask_dir=instance_mask_dir,
+            transform=transform,
+        )
 
     def __len__(self) -> int:
-        return len(self.image_paths)
+        return len(self._impl)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        img_path = self.image_paths[idx]
-        stem = img_path.stem
-        sem_path = self.semantic_mask_dir / f"{stem}_semantic.png"
-
-        image = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        sem_mask = cv2.imread(str(sem_path), cv2.IMREAD_GRAYSCALE)
-        sem_mask = (sem_mask > 0).astype(np.uint8)
-
-        inst_mask = None
-        if self.instance_mask_dir:
-            inst_path = self.instance_mask_dir / f"{stem}_instance.png"
-            if inst_path.exists():
-                inst_mask = cv2.imread(str(inst_path), cv2.IMREAD_UNCHANGED).astype(np.int32)
-                inst_mask = np.ascontiguousarray(inst_mask)
-
-        if self.transform:
-            kwargs = {"image": image, "mask": sem_mask}
-            if inst_mask is not None:
-                kwargs["instance_mask"] = inst_mask
-            transformed = self.transform(**kwargs)
-            image = transformed["image"]
-            sem_mask = transformed["mask"]
-            inst_mask = transformed.get("instance_mask")
-        else:
-            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
-            sem_mask = torch.from_numpy(sem_mask).long()
-
-        result = {
-            "pixel_values": image
-            if isinstance(image, torch.Tensor)
-            else torch.from_numpy(np.array(image)),
-            "semantic_mask": sem_mask.long()
-            if isinstance(sem_mask, torch.Tensor)
-            else torch.from_numpy(sem_mask).long(),
-        }
-
-        if inst_mask is not None:
-            result["instance_mask"] = (
-                inst_mask.long()
-                if isinstance(inst_mask, torch.Tensor)
-                else torch.from_numpy(inst_mask).long()
-            )
-
-        result["id"] = stem
-        return result
+        return self._impl[idx]
 
 
 class SolarSegDataModule(L.LightningDataModule):

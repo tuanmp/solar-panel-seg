@@ -79,6 +79,6 @@ def bdappv_mask_to_labelmaps(
 
     labeled = measure.label(binary, connectivity=2)
     instance_path = output_dir / f"{mask_path.stem}_instance.png"
-    cv2.imwrite(str(instance_path), labeled.astype(np.int32))
+    cv2.imwrite(str(instance_path), labeled.astype(np.uint16))
 
     return {"semantic": semantic_path, "instance": instance_path}
