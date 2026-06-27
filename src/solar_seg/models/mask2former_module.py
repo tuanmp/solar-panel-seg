@@ -8,17 +8,7 @@ from transformers import Mask2FormerForUniversalSegmentation
 
 
 class Mask2FormerModule(L.LightningModule):
-    """LightningModule wrapping HuggingFace Mask2Former for panoptic segmentation.
-
-    Args:
-        model_name: HuggingFace model identifier.
-            Default: "facebook/mask2former-swin-base-coco-panoptic".
-        learning_rate: Peak learning rate for AdamW.
-        weight_decay: AdamW weight decay.
-        warmup_steps: Linear warmup steps.
-        num_labels: Number of semantic classes including background.
-            Default 2 (background, solar panel).
-    """
+    """LightningModule wrapping HuggingFace Mask2Former for panoptic segmentation."""
 
     def __init__(
         self,
@@ -40,13 +30,68 @@ class Mask2FormerModule(L.LightningModule):
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(pixel_values=pixel_values)
 
+    def _prepare_labels(
+        self, semantic_mask: torch.Tensor, instance_mask: torch.Tensor | None
+    ) -> tuple[list[list[torch.Tensor]], list[list[int]]]:
+        """Convert dataset masks to Mask2Former label format.
+
+        Each image in batch produces:
+        - mask_labels[i]: list of binary masks, one per instance (K, H, W)
+        - class_labels[i]: list of class IDs, one per instance
+        """
+        batch_size = semantic_mask.shape[0]
+        mask_labels: list[list[torch.Tensor]] = []
+        class_labels: list[list[int]] = []
+
+        for b in range(batch_size):
+            sem = semantic_mask[b]  # (H, W)
+            inst = instance_mask[b] if instance_mask is not None else None
+
+            batch_mask_labels: list[torch.Tensor] = []
+            batch_class_labels: list[int] = []
+
+            if inst is not None:
+                unique_ids = torch.unique(inst)
+                unique_ids = unique_ids[unique_ids > 0]
+                for uid in unique_ids:
+                    mask = (inst == uid).float()  # (H, W)
+                    # Get class from semantic mask at this instance's location
+                    class_id = int(sem[mask > 0].mode().values.item()) if mask.sum() > 0 else 0
+                    class_id = max(0, min(class_id, self.hparams.num_labels - 1))
+                    batch_mask_labels.append(mask)
+                    batch_class_labels.append(class_id)
+            else:
+                # Fallback: use semantic mask as single instance
+                unique_classes = torch.unique(sem)
+                for cls_id in unique_classes:
+                    if cls_id == 0:
+                        continue
+                    mask = (sem == cls_id).float()
+                    if mask.sum() > 0:
+                        batch_mask_labels.append(mask)
+                        batch_class_labels.append(int(cls_id))
+
+            mask_labels.append(batch_mask_labels)
+            class_labels.append(batch_class_labels)
+
+        return mask_labels, class_labels
+
     def _shared_step(
         self,
         batch: dict[str, torch.Tensor],
         stage: str,
     ) -> torch.Tensor:
         pixel_values = batch["pixel_values"]
-        outputs = self(pixel_values=pixel_values)
+        semantic_mask = batch.get("semantic_mask")
+        instance_mask = batch.get("instance_mask")
+
+        mask_labels, class_labels = self._prepare_labels(semantic_mask, instance_mask)
+
+        outputs = self.model(
+            pixel_values=pixel_values,
+            mask_labels=mask_labels,
+            class_labels=class_labels,
+        )
         loss = outputs.loss
         self.log(
             f"{stage}_loss",
