@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
 from sentinelhub import (
     BBox as SHBBox,
     CRS,
@@ -53,11 +55,9 @@ class SentinelHubClient:
         end_date: str = "2024-01-01",
     ) -> dict[str, str]:
         """Download a single Sentinel-2 tile for the given bounding box."""
-        import numpy as np
-
         sh_bbox = self._to_sh_bbox(bbox)
-        width = int(sh_bbox.width * 111_320 / resolution)
-        height = int(sh_bbox.height * 111_320 / resolution)
+        width = int(bbox.width_km * 1000 / resolution)
+        height = int(bbox.height_km * 1000 / resolution)
 
         evalscript = """
         //VERSION=3
@@ -96,7 +96,6 @@ class SentinelHubClient:
         output_path = output_dir / fname
 
         image_data = request.get_data()[0]
-        from PIL import Image
         arr = (np.clip(image_data, 0, 1) * 255).astype(np.uint8)
         Image.fromarray(arr).save(str(output_path))
 

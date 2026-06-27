@@ -1,0 +1,2 @@
+{"type":"server-started","port":57036,"host":"0.0.0.0","url_host":"0.0.0.0","url":"http://0.0.0.0:57036","screen_dir":"/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/.superpowers/brainstorm/692215-1782557840/content","state_dir":"/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/.superpowers/brainstorm/692215-1782557840/state"}
+{"type":"server-stopped","reason":"idle timeout"}

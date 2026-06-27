@@ -73,15 +73,18 @@ def main() -> None:
 
     elif args.command == "sentinel":
         client = SentinelHubClient()
-        result = client.download_tile(
-            bbox=bbox,
-            output_dir=args.output,
-            prefix=args.prefix,
-            start_date=args.start_date,
-            end_date=args.end_date,
-            resolution=args.resolution,
-        )
-        print(f"Downloaded: {result['output_path']}")
+        try:
+            result = client.download_tile(
+                bbox=bbox,
+                output_dir=args.output,
+                prefix=args.prefix,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                resolution=args.resolution,
+            )
+            print(f"Downloaded: {result['output_path']}")
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
