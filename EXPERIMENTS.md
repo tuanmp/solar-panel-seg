@@ -1,20 +1,8 @@
 # Solar Panel Segmentation — Experiment Log
 
-## Completed Runs
+## Completed Runs — Phase 1: Hyperparameter Tuning
 
-### E0 — Early Swin-T Smoke Test (Swin-T, LR 1e-4, wd 0.05)
-| | |
-|---|---|
-| MLflow run | `d298c5365a5e4ccbb727ae0bec0d1369` |
-| Date | 2026-06-27 |
-| Model | Swin-T (47.4M params) |
-| Batch size | 4 |
-| Augmentations | RandomCrop 384, HFlip 0.5, VFlip 0.1 |
-| Epochs | 1 (sanity check) |
-| test/loss | 22.38 |
-| Notes | Early config validation. Found `_prepare_labels` bug (fixed). |
-
-### E1 — Baseline Swin-B v1 (Swin-B, LR 1e-4, wd 0.05)
+### E1 — Baseline Swin-B v1 (old config)
 | | |
 |---|---|
 | MLflow run | `8eb57a4204304d7b9067bc0baca52845` |
@@ -24,128 +12,144 @@
 | Batch size | 8 |
 | Augmentations | RandomCrop 384, HFlip 0.5, VFlip 0.1, ColorJitter 0.8, GaussBlur 0.1 |
 | Epochs | 14 |
-| **Best val/loss** | **8.51** (epoch 8) |
-| Best val/dice | 0.657 |
-| Best val/ce | 0.070 |
 | **test/loss** | **8.51** |
 | test/dice | 0.662 |
 | test/ce | 0.074 |
-| Notes | Overfitting: train-val gap grew 0.6→3.0. Val plateaued at epoch 2. |
 
-### E2 — Tuned Swin-B v2 (Swin-B, LR 3e-5, wd 0.01)
+### E2 — Tuned Swin-B v2 (improved config)
 | | |
 |---|---|
 | MLflow run | `2cb9b6ce92b447f88c47902c81f93243` |
-| Model | Swin-B (47M) |
 | LR / wd | **3e-5** / **0.01** |
 | Warmup | **500** steps |
 | Batch size | **16** |
-| Augmentations | No crop, **HFlip 0.3 only**, ColorJitter 0.8, GaussBlur 0.1 |
+| Augmentations | No crop, **HFlip 0.3 only** |
 | Epochs | 11 |
-| **Best val/loss** | **8.06** (epoch 6, **+5.3% vs E1**) |
-| Best val/dice | 0.636 (+3.1%) |
-| Best val/ce | 0.064 (+9.1%) |
-| **test/loss** | **8.07** (-5.2%) |
-| test/dice | 0.639 (-3.4%) |
-| test/ce | 0.068 (-8.0%) |
-| Notes | All metrics improved despite fewer epochs. Overfitting gap still ~3. |
+| **test/loss** | **8.07** (−5.2% vs E1) |
+| test/dice | 0.639 |
+| test/ce | 0.068 |
+
+### E6 — Baseline Swin-B v2 Reproduce (job 55175516)
+| | |
+|---|---|
+| Slurm ID | 55175516 |
+| Epochs | 17 (completed via requeue) |
+| **test/loss** | **8.15** |
+| test/dice | 0.633 |
+| test/ce | **0.063** (best so far) |
+
+### E3 — Swin-T (job 55175504)
+| | |
+|---|---|
+| Slurm ID | 55175504 |
+| Model | Swin-T (47M) |
+| Epochs | 17 |
+| **test/loss** | **8.27** |
+| test/dice | 0.637 |
+| test/ce | 0.080 |
+| Verdict | Swin-B beats Swin-T on BDAPPV |
+
+### E5 — No Horizontal Flip (job 55175509)
+| | |
+|---|---|
+| Slurm ID | 55175509 |
+| Augmentations | **HFlip 0.0**, ColorJitter 0.8, GaussBlur 0.1 |
+| **test/loss** | **8.15** |
+| test/dice | **0.627** (best dice!) |
+| test/ce | 0.076 |
+| Verdict | HFlip negligible ~0.1 loss difference |
+
+### E4 — Lower LR 1e-5 on Swin-B (job 55175505)
+| | |
+|---|---|
+| Slurm ID | 55175505 |
+| LR | **1e-5** |
+| **test/loss** | **8.60** |
+| test/dice | 0.666 |
+| test/ce | 0.077 |
+| Verdict | 3e-5 is the sweet spot |
 
 ---
 
-## Running / Pending Experiments
+## Running / Pending — Phase 2: Ceiling Breakers
 
-All submitted 2026-06-28. Shared QOS, 4h walltime, ~18 epochs each.
-
-### E3 — Swin-T (config-only)
+### E7 — Freeze Backbone (code change, resubmitted)
 | | |
 |---|---|
-| Slurm ID | `55175504` |
-| Branch | `main` |
-| Hydra override | `model=mask2former_swin_t` |
-| MLflow name | `swin_t` |
-| Model | Swin-T (30M) |
-| LR / wd | 3e-5 / 0.01 (from config) |
-| Batch size | 16 |
-| Augmentations | No crop, HFlip 0.3 (from `bdappv`) |
-| Hypothesis | Fewer params → less overfit on 21K tiles |
+| Slurm ID | 55188551 |
+| Branch | `feat/freeze-backbone` |
+| Clone | `/pscratch/sd/p/pmtuan/solar-exp-freeze` |
+| Config | `model=mask2former_swin_b_frozen` |
 
-### E4 — Swin-B, Lower LR (config-only)
+### E8 — EMA Weight Averaging (code change, resubmitted)
 | | |
 |---|---|
-| Slurm ID | `55175505` |
-| Branch | `main` |
-| Hydra override | `model.learning_rate=1.0e-5` |
-| MLflow name | `swin_b_lr1e5` |
-| Model | Swin-B (47M) |
-| LR / wd | **1e-5** / 0.01 |
-| Hypothesis | Finer LR → deeper convergence, less overfitting |
+| Slurm ID | 55188552 |
+| Branch | `feat/ema` |
+| Clone | `/pscratch/sd/p/pmtuan/solar-exp-ema` |
+| Config | `trainer.ema_decay=0.999` |
 
-### E5 — No Horizontal Flip (config-only)
+### E9 — 50-Epoch Baseline (preempt QOS)
 | | |
 |---|---|
-| Slurm ID | `55175509` |
-| Branch | `main` |
-| Hydra override | `data=bdappv_noflip` |
-| MLflow name | `noflip_swinb` |
-| Augmentations | **HFlip 0.0**, ColorJitter 0.8, GaussBlur 0.1 |
-| Hypothesis | Aerial panels have consistent orientation — flips may hurt |
+| Slurm ID | 55188935 |
+| QOS | preempt (0.25× after 2h) |
+| Config | default, 50 epochs |
+| Hypothesis | 18 epochs may not be enough for convergence |
 
-### E6 — Baseline Swin-B v2 Repeat (config-only)
+### E10 — BDAPPV + Bradbury Combined + Scale Jitter
 | | |
 |---|---|
-| Slurm ID | `55175516` |
-| Branch | `main` |
-| MLflow name | `baseline_swinb_v2` |
-| Config | Default (`configs/default.yaml`) |
-| Notes | Fresh run at commit `13b4432` for fair comparison |
+| Slurm ID | 55188991 |
+| Data | `data=combined` (21K + 14K tiles) |
+| Aug | Scale jitter 0.2 |
+| Hypothesis | More diverse data → break overfitting ceiling |
 
-### E7 — Freeze Backbone (code change)
+### E11 — Scale Jitter Only (BDAPPV)
 | | |
 |---|---|
-| Slurm ID | `55175613` |
-| Branch | `feat/freeze-backbone` (commit `3f1e3ce`) |
-| Clone path | `/pscratch/sd/p/pmtuan/solar-exp-freeze` |
-| Hydra override | `model=mask2former_swin_b_frozen` |
-| MLflow name | `freeze_swinb` |
-| Config | `freeze_backbone: true`, `unfreeze_epoch: 25` |
-| Hypothesis | Train head first ~25 epochs, then unfreeze backbone → better generalization |
+| Slurm ID | 55188992 |
+| Data | `data=bdappv_scale_jitter` |
+| Aug | Scale jitter 0.2, no Bradbury |
+| Hypothesis | Multi-scale alone helps regularization |
 
-### E8 — EMA Weight Averaging (code change)
+### E12 — Reweighted Loss (dice 10 : mask 5 : ce 1)
 | | |
 |---|---|
-| Slurm ID | `55175614` |
-| Branch | `feat/ema` (commit `2fdd8a5`) |
-| Clone path | `/pscratch/sd/p/pmtuan/solar-exp-ema` |
-| Hydra override | `trainer.ema_decay=0.999` |
-| MLflow name | `ema_swinb` |
-| Config | EMA decay 0.999, warmup from 0.5 |
-| Hypothesis | EMA smooths training noise → better generalization |
+| Slurm ID | 55188993 |
+| Model | `model=mask2former_swin_b_reweighted` |
+| Weights | ce=1.0, mask=5.0, dice=10.0 |
+| Hypothesis | More dice pressure → better shapes |
+
+### E13 — Swin-L (scaling test)
+| | |
+|---|---|
+| Slurm ID | 55189001 |
+| Model | `model=mask2former_swin_l` |
+| Hypothesis | More capacity with current regularization |
 
 ---
 
 ## Comparison Matrix
 
-| Exp | MLflow name | Model | LR | wd | Batch | Aug | Best val/loss | Best val/dice | test/loss |
-|-----|------------|-------|-----|------|------|------|--------------|---------------|-----------|
-| E1  | (8eb57a) | Swin-B | 1e-4 | 0.05 | 8 | crop+flip | 8.51 | 0.657 | 8.51 |
-| E2  | (2cb9b6) | Swin-B | 3e-5 | 0.01 | 16 | hflip 0.3 | **8.06** | **0.636** | **8.07** |
-| E3  | `swin_t` | Swin-T | 3e-5 | 0.01 | 16 | hflip 0.3 | ? | ? | ? |
-| E4  | `swin_b_lr1e5` | Swin-B | 1e-5 | 0.01 | 16 | hflip 0.3 | ? | ? | ? |
-| E5  | `noflip_swinb` | Swin-B | 3e-5 | 0.01 | 16 | **no flip** | ? | ? | ? |
-| E6  | `baseline_swinb_v2` | Swin-B | 3e-5 | 0.01 | 16 | hflip 0.3 | ? | ? | ? |
-| E7  | `freeze_swinb` | Swin-B | 3e-5 | 0.01 | 16 | hflip 0.3 | ? | ? | ? |
-| E8  | `ema_swinb` | Swin-B | 3e-5 | 0.01 | 16 | hflip 0.3 | ? | ? | ? |
+| Exp | test/loss | test/dice | test/ce | Key finding |
+|-----|-----------|-----------|---------|-------------|
+| E1 (old baseline) | 8.51 | 0.662 | 0.074 | Aggressive augs |
+| E2 (v2 baseline) | 8.07 | 0.639 | 0.068 | Tuning works |
+| **E6 (v2 rep)** | **8.15** | 0.633 | **0.063** | Best CE, reproducible |
+| E3 (Swin-T) | 8.27 | 0.637 | 0.080 | Bigger > smaller |
+| E5 (no flip) | 8.15 | **0.627** | 0.076 | Best dice, HFlip negligible |
+| E4 (LR 1e-5) | 8.60 | 0.666 | 0.077 | Underfitting |
+| E7 (freeze) | ? | ? | ? | Pending |
+| E8 (EMA) | ? | ? | ? | Pending |
+| E9 (50ep) | ? | ? | ? | Pending |
+| E10 (combined+scale) | ? | ? | ? | Pending |
+| E11 (scale jitter) | ? | ? | ? | Pending |
+| E12 (reweighted) | ? | ? | ? | Pending |
+| E13 (Swin-L) | ? | ? | ? | Pending |
 
-## Commands
+## Key Insight
 
-```bash
-# View queue
-squeue -u pmtuan
+**We hit a ceiling at test/loss ≈ 8.1 on BDAPPV alone.** Every config that converges lands between 8.07–8.27 despite different augmentations, backbones, and learning rates. The train loss continues to ~5.0 while validation stalls. This is structural — more hyperparameter tuning won't help.
 
-# MLflow UI
-mlflow ui --backend-store-uri /global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/mlruns
-
-# Clone a feature branch for local testing
-git clone /global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg /pscratch/sd/p/pmtuan/solar-exp-freeze
-cd /pscratch/sd/p/pmtuan/solar-exp-freeze && git checkout feat/freeze-backbone
-```
+**Phase 2 strategy:** break through with more data (Bradbury), scale jitter (multi-scale augmentation), loss rebalancing, and longer training. The code-change experiments (freeze, EMA) test architectural regularization.
