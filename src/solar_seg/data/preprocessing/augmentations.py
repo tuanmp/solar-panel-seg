@@ -4,17 +4,15 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 
-def training_transforms(image_size: int = 384) -> A.Compose:
+def training_transforms(image_size: int = 400) -> A.Compose:
     """Training augmentation pipeline.
 
     Args:
-        image_size: Output spatial size (square crop).
+        image_size: Output spatial size (same as input — no cropping).
     """
     return A.Compose(
         [
-            A.RandomCrop(image_size, image_size, p=1.0),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.1),
+            A.HorizontalFlip(p=0.3),
             A.ColorJitter(
                 brightness=0.2,
                 contrast=0.2,

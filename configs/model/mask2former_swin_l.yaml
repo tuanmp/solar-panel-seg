@@ -1,6 +1,6 @@
 # @package model
 model_name: facebook/mask2former-swin-large-coco-panoptic
-learning_rate: 1.0e-4
-weight_decay: 0.05
-warmup_steps: 1000
+learning_rate: 3.0e-5
+weight_decay: 0.01
+warmup_steps: 500
 num_labels: 2
