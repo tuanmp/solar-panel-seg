@@ -4,7 +4,7 @@ batch_size: 16
 num_workers: 4
 val_split: 0.15
 aug:
-  hflip_prob: 0.3
+  hflip_prob: 0.0
   vflip_prob: 0.0
   color_jitter_p: 0.8
   gaussian_blur_p: 0.1

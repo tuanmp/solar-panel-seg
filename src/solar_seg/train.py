@@ -31,11 +31,15 @@ def main(cfg: DictConfig) -> None:
     model_cfg = cfg.model
     trainer_cfg = cfg.trainer
 
+    aug_kwargs = {}
+    if hasattr(data_cfg, "aug") and data_cfg.aug is not None:
+        aug_kwargs = dict(data_cfg.aug)
+
     datamodule = SolarSegDataModule(
         data_root=Path(data_cfg.data_root),
         batch_size=data_cfg.batch_size,
         num_workers=data_cfg.num_workers,
-        train_transform=training_transforms(),
+        train_transform=training_transforms(**aug_kwargs),
         val_transform=validation_transforms(),
         val_split=data_cfg.val_split,
     )
