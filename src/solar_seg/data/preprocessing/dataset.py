@@ -122,9 +122,11 @@ class SolarSegDataModule(L.LightningDataModule):
         train_transform: Callable | None = None,
         val_transform: Callable | None = None,
         val_split: float = 0.15,
+        secondary_data_root: Path | None = None,
     ) -> None:
         super().__init__()
         self.data_root = Path(data_root)
+        self.secondary_data_root = Path(secondary_data_root) if secondary_data_root else None
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.train_transform = train_transform
@@ -144,6 +146,39 @@ class SolarSegDataModule(L.LightningDataModule):
         if not all_paths:
             raise FileNotFoundError(f"No images found in {self.image_dir}")
 
+        # Incorporate secondary dataset if provided
+        if self.secondary_data_root is not None:
+            sec_img_dir = self.secondary_data_root / "images"
+            sec_sem_dir = self.secondary_data_root / "semantic_masks"
+            sec_inst_dir = self.secondary_data_root / "instance_masks"
+            if not sec_inst_dir.exists():
+                sec_inst_dir = None
+            sec_paths = sorted(sec_img_dir.glob("*.png"))
+            if sec_paths:
+                n_sec_train = max(1, len(sec_paths) - max(1, int(len(sec_paths) * self.val_split)))
+                if stage in (None, "fit"):
+                    # Create two separate datasets and concatenate
+                    sec_train_ds = _SplitDataset(
+                        image_paths=sec_paths[:n_sec_train],
+                        semantic_mask_dir=sec_sem_dir,
+                        instance_mask_dir=sec_inst_dir,
+                        transform=self.train_transform,
+                    )
+                    sec_val_ds = _SplitDataset(
+                        image_paths=sec_paths[n_sec_train:],
+                        semantic_mask_dir=sec_sem_dir,
+                        instance_mask_dir=sec_inst_dir,
+                        transform=self.val_transform,
+                    )
+                else:
+                    sec_train_ds = None
+                    sec_val_ds = _SplitDataset(
+                        image_paths=sec_paths,
+                        semantic_mask_dir=sec_sem_dir,
+                        instance_mask_dir=sec_inst_dir,
+                        transform=self.val_transform,
+                    )
+
         n_val = max(1, int(len(all_paths) * self.val_split))
         n_train = len(all_paths) - n_val
 
@@ -151,10 +186,20 @@ class SolarSegDataModule(L.LightningDataModule):
         val_paths = all_paths[n_train : n_train + n_val]
 
         if stage in (None, "fit"):
-            self.train_ds = self._make_dataset(train_paths, self.train_transform)
-            self.val_ds = self._make_dataset(val_paths, self.val_transform)
+            prim_train = self._make_dataset(train_paths, self.train_transform)
+            prim_val = self._make_dataset(val_paths, self.val_transform)
+            if self.secondary_data_root is not None and sec_paths:
+                self.train_ds = torch.utils.data.ConcatDataset([prim_train, sec_train_ds])
+                self.val_ds = torch.utils.data.ConcatDataset([prim_val, sec_val_ds])
+            else:
+                self.train_ds = prim_train
+                self.val_ds = prim_val
         if stage in (None, "test"):
-            self.test_ds = self._make_dataset(val_paths, self.val_transform)
+            if self.secondary_data_root is not None and sec_paths:
+                prim_test = self._make_dataset(val_paths, self.val_transform)
+                self.test_ds = torch.utils.data.ConcatDataset([prim_test, sec_val_ds])
+            else:
+                self.test_ds = self._make_dataset(val_paths, self.val_transform)
 
     def _make_dataset(
         self, paths: list[Path], transform: Callable | None

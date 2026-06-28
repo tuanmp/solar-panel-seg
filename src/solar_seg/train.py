@@ -42,6 +42,7 @@ def main(cfg: DictConfig) -> None:
         train_transform=training_transforms(**aug_kwargs),
         val_transform=validation_transforms(),
         val_split=data_cfg.val_split,
+        secondary_data_root=Path(data_cfg.secondary_data_root) if hasattr(data_cfg, "secondary_data_root") and data_cfg.get("secondary_data_root") else None,
     )
 
     model = Mask2FormerModule(
@@ -50,6 +51,9 @@ def main(cfg: DictConfig) -> None:
         weight_decay=model_cfg.weight_decay,
         warmup_steps=model_cfg.warmup_steps,
         num_labels=model_cfg.num_labels,
+        loss_ce_weight=float(model_cfg.get("loss_ce_weight", 2.0)),
+        loss_mask_weight=float(model_cfg.get("loss_mask_weight", 5.0)),
+        loss_dice_weight=float(model_cfg.get("loss_dice_weight", 5.0)),
     )
 
     logger = MLFlowLogger(

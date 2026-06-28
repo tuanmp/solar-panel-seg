@@ -23,6 +23,9 @@ class Mask2FormerModule(L.LightningModule):
         weight_decay: float = 0.05,
         warmup_steps: int = 1000,
         num_labels: int = 2,
+        loss_ce_weight: float = 2.0,
+        loss_mask_weight: float = 5.0,
+        loss_dice_weight: float = 5.0,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -33,7 +36,13 @@ class Mask2FormerModule(L.LightningModule):
             ignore_mismatched_sizes=True,
         )
 
-        # Buffer to hold first validation batch for epoch-end visualization
+        self.model.weight_dict = {
+            "loss_cross_entropy": loss_ce_weight,
+            "loss_mask": loss_mask_weight,
+            "loss_dice": loss_dice_weight,
+        }
+        self.model.criterion.weight_dict = self.model.weight_dict
+
         self._val_viz_batch: dict[str, torch.Tensor] | None = None
 
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:

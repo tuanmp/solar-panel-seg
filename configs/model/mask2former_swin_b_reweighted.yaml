@@ -1,0 +1,9 @@
+# @package model
+model_name: facebook/mask2former-swin-base-coco-panoptic
+learning_rate: 3.0e-5
+weight_decay: 0.01
+warmup_steps: 500
+num_labels: 2
+loss_ce_weight: 1.0
+loss_mask_weight: 5.0
+loss_dice_weight: 10.0

@@ -9,6 +9,7 @@ def training_transforms(
     vflip_prob: float = 0.0,
     color_jitter_p: float = 0.8,
     gaussian_blur_p: float = 0.1,
+    scale_jitter: float = 0.0,
 ) -> A.Compose:
     """Training augmentation pipeline.
 
@@ -17,8 +18,13 @@ def training_transforms(
         vflip_prob: Probability of vertical flip.
         color_jitter_p: Probability of color jitter.
         gaussian_blur_p: Probability of Gaussian blur.
+        scale_jitter: If > 0, RandomResizedCrop with scale [1-scale_jitter, 1+scale_jitter].
     """
     transforms = []
+    if scale_jitter > 0:
+        transforms.append(A.RandomResizedCrop(
+            400, 400, scale=(1.0 - scale_jitter, 1.0 + scale_jitter), ratio=(0.9, 1.1), p=0.8,
+        ))
     if hflip_prob > 0:
         transforms.append(A.HorizontalFlip(p=hflip_prob))
     if vflip_prob > 0:
