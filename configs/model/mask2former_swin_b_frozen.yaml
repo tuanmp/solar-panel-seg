@@ -1,0 +1,8 @@
+# @package model
+model_name: facebook/mask2former-swin-base-coco-panoptic
+learning_rate: 3.0e-5
+weight_decay: 0.01
+warmup_steps: 500
+num_labels: 2
+freeze_backbone: true
+unfreeze_epoch: 25

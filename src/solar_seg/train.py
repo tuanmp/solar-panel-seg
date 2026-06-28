@@ -54,6 +54,8 @@ def main(cfg: DictConfig) -> None:
         loss_ce_weight=float(model_cfg.get("loss_ce_weight", 2.0)),
         loss_mask_weight=float(model_cfg.get("loss_mask_weight", 5.0)),
         loss_dice_weight=float(model_cfg.get("loss_dice_weight", 5.0)),
+        freeze_backbone=bool(model_cfg.get("freeze_backbone", False)),
+        unfreeze_epoch=int(model_cfg.get("unfreeze_epoch", 0)),
     )
 
     logger = MLFlowLogger(

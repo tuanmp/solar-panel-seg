@@ -26,6 +26,8 @@ class Mask2FormerModule(L.LightningModule):
         loss_ce_weight: float = 2.0,
         loss_mask_weight: float = 5.0,
         loss_dice_weight: float = 5.0,
+        freeze_backbone: bool = False,
+        unfreeze_epoch: int = 0,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -43,7 +45,32 @@ class Mask2FormerModule(L.LightningModule):
         }
         self.model.criterion.weight_dict = self.model.weight_dict
 
+        self._backbone_unfrozen = not freeze_backbone
+        if freeze_backbone:
+            self._freeze_backbone()
+
         self._val_viz_batch: dict[str, torch.Tensor] | None = None
+
+    def _freeze_backbone(self) -> None:
+        backbone = self.model.model.pixel_level_module.encoder
+        for param in backbone.parameters():
+            param.requires_grad = False
+        self._backbone_unfrozen = False
+
+    def _unfreeze_backbone(self) -> None:
+        backbone = self.model.model.pixel_level_module.encoder
+        for param in backbone.parameters():
+            param.requires_grad = True
+        self._backbone_unfrozen = True
+
+    def on_train_epoch_start(self) -> None:
+        if (
+            not self._backbone_unfrozen
+            and self.hparams.unfreeze_epoch > 0
+            and self.current_epoch >= self.hparams.unfreeze_epoch
+        ):
+            self._unfreeze_backbone()
+            print(f"Epoch {self.current_epoch}: backbone unfrozen")
 
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(pixel_values=pixel_values)
