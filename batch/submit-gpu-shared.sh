@@ -28,14 +28,17 @@ export PYTHONFAULTHANDLER=1
 # Default repo — override with REPO=/path/to/clone for branch experiments
 REPO="${REPO:-/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg}"
 
-# Always use the main repo's venv (clones don't recreate it)
-MAIN_VENV="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/.venv"
-if [ -d "$MAIN_VENV" ]; then
+# Use the main repo's venv. For branch clones, symlink .venv so uv finds it.
+MAIN_REPO="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg"
+MAIN_VENV="${MAIN_REPO}/.venv"
+if [ -d "$MAIN_VENV" ] && [ "$REPO" != "$MAIN_REPO" ]; then
+    # Branch clone — symlink .venv so uv uses the shared venv
+    if [ ! -e "${REPO}/.venv" ]; then
+        ln -s "$MAIN_VENV" "${REPO}/.venv"
+    fi
+elif [ -d "$MAIN_VENV" ]; then
     export VIRTUAL_ENV="$MAIN_VENV"
     export PATH="${MAIN_VENV}/bin:${PATH}"
-elif [ -d "${REPO}/.venv" ]; then
-    export VIRTUAL_ENV="${REPO}/.venv"
-    export PATH="${REPO}/.venv/bin:${PATH}"
 fi
 
 mkdir -p slurm_logs
