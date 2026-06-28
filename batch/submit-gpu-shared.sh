@@ -25,16 +25,27 @@
 export SLURM_CPU_BIND="cores"
 export PYTHONFAULTHANDLER=1
 
-mkdir -p slurm_logs
+# Default repo — override with REPO=/path/to/clone for branch experiments
+REPO="${REPO:-/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg}"
 
-# Use main venv (shared across experiments)
-export VIRTUAL_ENV="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/.venv"
-export PATH="${VIRTUAL_ENV}/bin:${PATH}"
+# Always use the main repo's venv (clones don't recreate it)
+MAIN_VENV="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg/.venv"
+if [ -d "$MAIN_VENV" ]; then
+    export VIRTUAL_ENV="$MAIN_VENV"
+    export PATH="${MAIN_VENV}/bin:${PATH}"
+elif [ -d "${REPO}/.venv" ]; then
+    export VIRTUAL_ENV="${REPO}/.venv"
+    export PATH="${REPO}/.venv/bin:${PATH}"
+fi
+
+mkdir -p slurm_logs
 
 echo "=============================================="
 echo " Job ID:   ${SLURM_JOB_ID}"
 echo " QOS:      shared (max 4h)"
+echo " Repo:     ${REPO}"
 echo " Command:  uv run python -m solar_seg.train $@"
 echo "=============================================="
 
+cd "$REPO"
 srun uv run python -m solar_seg.train "$@"
