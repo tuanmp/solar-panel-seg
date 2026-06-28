@@ -17,6 +17,7 @@ from solar_seg.data.preprocessing.augmentations import (
     validation_transforms,
 )
 from solar_seg.models.mask2former_module import Mask2FormerModule
+from solar_seg.utils.ema import EMACallback
 
 
 @hydra.main(
@@ -71,6 +72,9 @@ def main(cfg: DictConfig) -> None:
         EarlyStopping(monitor="val/loss", mode="min", patience=5),
         LearningRateMonitor(logging_interval="step"),
     ]
+
+    if trainer_cfg.get("ema_decay", 0) > 0:
+        callbacks.append(EMACallback(decay=float(trainer_cfg.ema_decay)))
 
     trainer = L.Trainer(
         max_epochs=trainer_cfg.max_epochs,
