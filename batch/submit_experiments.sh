@@ -26,15 +26,27 @@ sbatch --time=480 batch/submit_solar.sh experiment_name=noflip_swinb data=bdappv
 # -----------------------------------------------------------------------
 # Batch 2: Code-change experiments — each on its own branch
 # -----------------------------------------------------------------------
-# These need the branch pushed first:
-#   git checkout feat/freeze-backbone && git push origin feat/freeze-backbone
-#   git checkout feat/ema && git push origin feat/ema
+# Branches are already pushed.  Clone into a per-branch worktree first:
 #
-# To run:
-#   git clone /global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg /tmp/solar-feat-freeze
-#   cd /tmp/solar-feat-freeze && git checkout feat/freeze-backbone
-#   REPO=/tmp/solar-feat-freeze sbatch --time=480 batch/submit_solar.sh \
-#     experiment_name=freeze_swinb trainer.max_epochs=100
+#   BASE="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg"
+#   CLONE="/pscratch/sd/p/pmtuan/solar-exp-freeze"
+#   if [ ! -d "$CLONE" ]; then
+#       git clone "$BASE" "$CLONE"
+#   fi
+#   git -C "$CLONE" fetch origin feat/freeze-backbone
+#   git -C "$CLONE" checkout feat/freeze-backbone
+#   REPO="$CLONE" sbatch --time=480 batch/submit_solar.sh \
+#       experiment_name=freeze_swinb trainer.max_epochs=100
+#
+#   # EMA experiment:
+#   CLONE="/pscratch/sd/p/pmtuan/solar-exp-ema"
+#   if [ ! -d "$CLONE" ]; then
+#       git clone "$BASE" "$CLONE"
+#   fi
+#   git -C "$CLONE" fetch origin feat/ema
+#   git -C "$CLONE" checkout feat/ema
+#   REPO="$CLONE" sbatch --time=480 "$CLONE/batch/submit_solar.sh" \
+#       experiment_name=ema_swinb trainer.max_epochs=50 trainer.ema_decay=0.999
 # -----------------------------------------------------------------------
 
 # -----------------------------------------------------------------------
