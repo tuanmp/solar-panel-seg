@@ -23,7 +23,7 @@ def training_transforms(
     transforms = []
     if scale_jitter > 0:
         transforms.append(A.RandomResizedCrop(
-            400, 400, scale=(1.0 - scale_jitter, 1.0 + scale_jitter), ratio=(0.9, 1.1), p=0.8,
+            400, 400, scale=(1.0 - scale_jitter, 1.0), ratio=(0.9, 1.1), p=0.8,
         ))
     if hflip_prob > 0:
         transforms.append(A.HorizontalFlip(p=hflip_prob))
