@@ -8,7 +8,10 @@ import numpy as np
 import torch
 from transformers import Mask2FormerForUniversalSegmentation
 
+from solar_seg.evaluation.metrics import mean_iou, panoptic_quality
+
 MAX_VAL_VIZ_SAMPLES = 4
+MAX_METRIC_SAMPLES = 500
 
 
 class Mask2FormerModule(L.LightningModule):
@@ -44,6 +47,7 @@ class Mask2FormerModule(L.LightningModule):
 
         self._source_names = source_names or ["default"]
         self._val_viz_batches: dict[str, dict[str, torch.Tensor]] = {}
+        self._metric_preds: dict[str, list[dict]] = {}
 
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(pixel_values=pixel_values)
@@ -91,6 +95,111 @@ class Mask2FormerModule(L.LightningModule):
 
         return mask_labels, class_labels
 
+    def _decode_predictions(
+        self,
+        class_logits: torch.Tensor,
+        masks_logits: torch.Tensor,
+        target_hw: tuple[int, int],
+    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        """Convert Mask2Former logits to per-image (semantic, instance) masks.
+
+        Args:
+            class_logits: (B, Q, num_labels)
+            masks_logits: (B, Q, H_pred, W_pred) — at 1/4 input resolution
+            target_hw: (H, W) of target mask to upscale to
+
+        Returns:
+            List of (pred_semantic_uint8, pred_instance_uint16) per image,
+            with values 0/1 for semantic and 0/1/2/... for instance.
+        """
+        B = class_logits.shape[0]
+        pred_classes = class_logits.softmax(dim=-1)
+        pred_scores, pred_class = pred_classes.max(dim=-1)
+        tH, tW = target_hw
+
+        results: list[tuple[np.ndarray, np.ndarray]] = []
+        for b in range(B):
+            is_panel = pred_class[b] == 1
+            panel_queries = torch.where(is_panel)[0]
+
+            pred_sem = np.zeros((tH, tW), dtype=np.uint8)
+            pred_inst = np.zeros((tH, tW), dtype=np.uint16)
+            inst_id = 1
+
+            for q in panel_queries:
+                score = pred_scores[b, q].item()
+                if score < 0.3:
+                    continue
+                mask = masks_logits[b, q].sigmoid()
+                mask = torch.nn.functional.interpolate(
+                    mask.unsqueeze(0).unsqueeze(0),
+                    size=(tH, tW),
+                    mode="bilinear",
+                    align_corners=False,
+                ).squeeze()
+                mask_np = (mask.cpu().numpy() > 0.5).astype(np.uint8)
+                pred_sem[mask_np > 0] = 1
+                pred_inst[mask_np > 0] = inst_id
+                inst_id += 1
+
+            results.append((pred_sem, pred_inst))
+
+        return results
+
+    def _compute_and_log_metrics(
+        self, source_name: str, preds: list[dict]
+    ) -> None:
+        """Compute mIoU and panoptic quality from accumulated predictions."""
+        prefix = f"val/{source_name}"
+        total_pq, total_sq, total_rq = 0.0, 0.0, 0.0
+        total_iou = 0.0
+        count = 0
+
+        for item in preds:
+            gt_sem = item["gt_semantic"]
+            gt_inst = item["gt_instance"]
+            pred_sem = item["pred_semantic"]
+            pred_inst = item["pred_instance"]
+
+            try:
+                iou = mean_iou(
+                    torch.from_numpy(pred_sem),
+                    torch.from_numpy(gt_sem),
+                    num_classes=self.hparams.num_labels,
+                )
+                total_iou += iou
+
+                pq_metrics = panoptic_quality(
+                    torch.from_numpy(pred_sem),
+                    torch.from_numpy(pred_inst),
+                    torch.from_numpy(gt_sem),
+                    torch.from_numpy(gt_inst),
+                    num_classes=self.hparams.num_labels,
+                )
+                total_pq += pq_metrics["pq"]
+                total_sq += pq_metrics["sq"]
+                total_rq += pq_metrics["rq"]
+                count += 1
+            except Exception:
+                continue
+
+        if count == 0:
+            return
+
+        for metric_name, value in [
+            ("miou", total_iou / count),
+            ("pq", total_pq / count),
+            ("sq", total_sq / count),
+            ("rq", total_rq / count),
+        ]:
+            self.log(
+                f"{prefix}/{metric_name}",
+                value,
+                on_epoch=True,
+                on_step=False,
+                add_dataloader_idx=False,
+            )
+
     def _shared_step(
         self,
         batch: dict[str, torch.Tensor],
@@ -109,7 +218,6 @@ class Mask2FormerModule(L.LightningModule):
             class_labels=class_labels,
         )
 
-        # Build metric prefix: "train", "val/bdappv", "test/bradbury", etc.
         prefix = stage if not source_name else f"{stage}/{source_name}"
 
         total_loss = outputs.loss
@@ -138,6 +246,32 @@ class Mask2FormerModule(L.LightningModule):
                 add_dataloader_idx=False,
             )
 
+        # Accumulate predictions for metric computation
+        if (stage in ("val", "test")) and source_name:
+            key = source_name
+            if key not in self._metric_preds:
+                self._metric_preds[key] = []
+            if len(self._metric_preds[key]) < MAX_METRIC_SAMPLES:
+                # Decode predictions at target resolution
+                gt_H, gt_W = semantic_mask.shape[1:]
+                decoded = self._decode_predictions(
+                    outputs.class_queries_logits,
+                    outputs.masks_queries_logits,
+                    target_hw=(gt_H, gt_W),
+                )
+                for b in range(semantic_mask.shape[0]):
+                    if len(self._metric_preds[key]) >= MAX_METRIC_SAMPLES:
+                        break
+                    gt_sem_np = semantic_mask[b].cpu().numpy().astype(np.uint8)
+                    inst = instance_mask[b] if instance_mask is not None else None
+                    gt_inst_np = inst.cpu().numpy().astype(np.int32) if inst is not None else np.zeros_like(gt_sem_np, dtype=np.int32)
+                    self._metric_preds[key].append({
+                        "gt_semantic": gt_sem_np,
+                        "gt_instance": gt_inst_np,
+                        "pred_semantic": decoded[b][0],
+                        "pred_instance": decoded[b][1],
+                    })
+
         return total_loss
 
     def training_step(
@@ -155,7 +289,6 @@ class Mask2FormerModule(L.LightningModule):
     ) -> torch.Tensor:
         source = self._source_names[dataloader_idx]
 
-        # Store first batch per source for epoch-end visualization
         if source not in self._val_viz_batches:
             self._val_viz_batches[source] = {
                 k: v.detach().cpu().clone()
@@ -166,16 +299,20 @@ class Mask2FormerModule(L.LightningModule):
         return self._shared_step(batch, "val", source_name=source)
 
     def on_validation_epoch_end(self) -> None:
-        if not self._val_viz_batches:
-            return
+        # Compute and log per-source metrics
+        for source, preds in self._metric_preds.items():
+            self._compute_and_log_metrics(source, preds)
+        self._metric_preds.clear()
 
-        try:
-            for source, batch in self._val_viz_batches.items():
-                self._log_prediction_plots(batch, source)
-        except Exception as e:
-            print(f"Warning: prediction plot generation failed: {e}")
-        finally:
-            self._val_viz_batches.clear()
+        # Generate prediction plots
+        if self._val_viz_batches:
+            try:
+                for source, batch in self._val_viz_batches.items():
+                    self._log_prediction_plots(batch, source)
+            except Exception as e:
+                print(f"Warning: prediction plot generation failed: {e}")
+            finally:
+                self._val_viz_batches.clear()
 
     def _log_prediction_plots(self, batch: dict[str, torch.Tensor], source: str) -> None:
         pixel_values = batch["pixel_values"].to(self.device)
@@ -271,6 +408,11 @@ class Mask2FormerModule(L.LightningModule):
     ) -> torch.Tensor:
         source = self._source_names[dataloader_idx]
         return self._shared_step(batch, "test", source_name=source)
+
+    def on_test_epoch_end(self) -> None:
+        for source, preds in self._metric_preds.items():
+            self._compute_and_log_metrics(source, preds)
+        self._metric_preds.clear()
 
     def configure_optimizers(self) -> dict[str, Any]:
         optimizer = torch.optim.AdamW(
