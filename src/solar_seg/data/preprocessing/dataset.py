@@ -6,7 +6,7 @@ from typing import Callable
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Subset
 import lightning as L
 
 
@@ -112,134 +112,138 @@ class SolarSegDataset(Dataset):
 
 
 class SolarSegDataModule(L.LightningDataModule):
-    """LightningDataModule for solar panel segmentation."""
+    """LightningDataModule for multi-source solar panel segmentation.
+
+    Supports any number of data sources.  Each source is a directory root with
+    images/, semantic_masks/, and (optionally) instance_masks/ subdirectories.
+
+    * Training: all source train splits are concatenated into a single loader.
+    * Validation: returns **one loader per source** so the LightningModule
+      can log per-source metrics.
+    * Testing: same as validation (one loader per source).
+    """
 
     def __init__(
         self,
-        data_root: Path,
+        data_roots: dict[str, Path],
         batch_size: int = 8,
         num_workers: int = 4,
         train_transform: Callable | None = None,
         val_transform: Callable | None = None,
         val_split: float = 0.15,
-        secondary_data_root: Path | None = None,
     ) -> None:
         super().__init__()
-        self.data_root = Path(data_root)
-        self.secondary_data_root = Path(secondary_data_root) if secondary_data_root else None
+        self._data_roots = {name: Path(root) for name, root in data_roots.items()}
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.train_transform = train_transform
         self.val_transform = val_transform
         self.val_split = val_split
 
-        self.image_dir = self.data_root / "images"
-        self.semantic_dir = self.data_root / "semantic_masks"
-        self.instance_dir = self.data_root / "instance_masks"
+        self._source_names = list(self._data_roots.keys())
 
-        self.train_ds: _SplitDataset | None = None
-        self.val_ds: _SplitDataset | None = None
-        self.test_ds: _SplitDataset | None = None
+        self._train_ds: ConcatDataset | None = None
+        self._val_ds_list: list[_SplitDataset] = []
+        self._test_ds_list: list[_SplitDataset] = []
+
+    @property
+    def source_names(self) -> list[str]:
+        """Ordered list of source names (matches dataloader order)."""
+        return list(self._source_names)
 
     def setup(self, stage: str | None = None) -> None:
-        all_paths = sorted(self.image_dir.glob("*.png"))
-        if not all_paths:
-            raise FileNotFoundError(f"No images found in {self.image_dir}")
+        if stage not in (None, "fit", "test"):
+            return
 
-        # Incorporate secondary dataset if provided
-        if self.secondary_data_root is not None:
-            sec_img_dir = self.secondary_data_root / "images"
-            sec_sem_dir = self.secondary_data_root / "semantic_masks"
-            sec_inst_dir = self.secondary_data_root / "instance_masks"
-            if not sec_inst_dir.exists():
-                sec_inst_dir = None
-            sec_paths = sorted(sec_img_dir.glob("*.png"))
-            if sec_paths:
-                n_sec_train = max(1, len(sec_paths) - max(1, int(len(sec_paths) * self.val_split)))
-                if stage in (None, "fit"):
-                    # Create two separate datasets and concatenate
-                    sec_train_ds = _SplitDataset(
-                        image_paths=sec_paths[:n_sec_train],
-                        semantic_mask_dir=sec_sem_dir,
-                        instance_mask_dir=sec_inst_dir,
-                        transform=self.train_transform,
-                    )
-                    sec_val_ds = _SplitDataset(
-                        image_paths=sec_paths[n_sec_train:],
-                        semantic_mask_dir=sec_sem_dir,
-                        instance_mask_dir=sec_inst_dir,
-                        transform=self.val_transform,
-                    )
-                else:
-                    sec_train_ds = None
-                    sec_val_ds = _SplitDataset(
-                        image_paths=sec_paths,
-                        semantic_mask_dir=sec_sem_dir,
-                        instance_mask_dir=sec_inst_dir,
-                        transform=self.val_transform,
-                    )
+        all_train: list[Dataset] = []
+        self._val_ds_list = []
+        self._test_ds_list = []
 
-        n_val = max(1, int(len(all_paths) * self.val_split))
-        n_train = len(all_paths) - n_val
+        for name, root in self._data_roots.items():
+            img_dir = root / "images"
+            sem_dir = root / "semantic_masks"
+            inst_dir = root / "instance_masks"
+            if not inst_dir.exists():
+                inst_dir = None
 
-        train_paths = all_paths[:n_train]
-        val_paths = all_paths[n_train : n_train + n_val]
+            paths = sorted(img_dir.glob("*.png"))
+            if not paths:
+                print(f"Warning: no images found in {img_dir} — skipping source '{name}'")
+                continue
+
+            n_val = max(1, int(len(paths) * self.val_split))
+            n_train = len(paths) - n_val
+            train_paths = paths[:n_train]
+            val_paths = paths[n_train:]
+
+            if stage in (None, "fit"):
+                src_train = _SplitDataset(
+                    image_paths=train_paths,
+                    semantic_mask_dir=sem_dir,
+                    instance_mask_dir=inst_dir,
+                    transform=self.train_transform,
+                )
+                src_val = _SplitDataset(
+                    image_paths=val_paths,
+                    semantic_mask_dir=sem_dir,
+                    instance_mask_dir=inst_dir,
+                    transform=self.val_transform,
+                )
+                all_train.append(src_train)
+                self._val_ds_list.append(src_val)
+
+            if stage in (None, "test"):
+                src_test = _SplitDataset(
+                    image_paths=val_paths,
+                    semantic_mask_dir=sem_dir,
+                    instance_mask_dir=inst_dir,
+                    transform=self.val_transform,
+                )
+                self._test_ds_list.append(src_test)
 
         if stage in (None, "fit"):
-            prim_train = self._make_dataset(train_paths, self.train_transform)
-            prim_val = self._make_dataset(val_paths, self.val_transform)
-            if self.secondary_data_root is not None and sec_paths:
-                self.train_ds = torch.utils.data.ConcatDataset([prim_train, sec_train_ds])
-                self.val_ds = torch.utils.data.ConcatDataset([prim_val, sec_val_ds])
-            else:
-                self.train_ds = prim_train
-                self.val_ds = prim_val
-        if stage in (None, "test"):
-            if self.secondary_data_root is not None and sec_paths:
-                prim_test = self._make_dataset(val_paths, self.val_transform)
-                self.test_ds = torch.utils.data.ConcatDataset([prim_test, sec_val_ds])
-            else:
-                self.test_ds = self._make_dataset(val_paths, self.val_transform)
-
-    def _make_dataset(
-        self, paths: list[Path], transform: Callable | None
-    ) -> _SplitDataset:
-        return _SplitDataset(
-            image_paths=paths,
-            semantic_mask_dir=self.semantic_dir,
-            instance_mask_dir=self.instance_dir if self.instance_dir.exists() else None,
-            transform=transform,
-        )
+            if not all_train:
+                raise RuntimeError("No training data found for any source")
+            self._train_ds = ConcatDataset(all_train) if len(all_train) > 1 else all_train[0]
+            # source_names only includes sources that actually produced data
+            self._source_names = [name for name in self._data_roots
+                                  if (self._data_roots[name] / "images").is_dir()]
 
     def train_dataloader(self) -> DataLoader:
-        if self.train_ds is None:
+        if self._train_ds is None:
             raise RuntimeError("Call setup('fit') before requesting train_dataloader")
         return DataLoader(
-            self.train_ds,
+            self._train_ds,
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=torch.cuda.is_available(),
         )
 
-    def val_dataloader(self) -> DataLoader:
-        if self.val_ds is None:
+    def val_dataloader(self) -> list[DataLoader]:
+        if not self._val_ds_list:
             raise RuntimeError("Call setup('fit') before requesting val_dataloader")
-        return DataLoader(
-            self.val_ds,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
+        return [
+            DataLoader(
+                ds,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                pin_memory=torch.cuda.is_available(),
+            )
+            for ds in self._val_ds_list
+        ]
 
-    def test_dataloader(self) -> DataLoader:
-        if self.test_ds is None:
+    def test_dataloader(self) -> list[DataLoader]:
+        if not self._test_ds_list:
             raise RuntimeError("Call setup('test') before requesting test_dataloader")
-        return DataLoader(
-            self.test_ds,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
+        return [
+            DataLoader(
+                ds,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                pin_memory=torch.cuda.is_available(),
+            )
+            for ds in self._test_ds_list
+        ]

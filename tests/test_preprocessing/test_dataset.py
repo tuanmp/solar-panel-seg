@@ -48,11 +48,11 @@ def test_dataset_getitem(tmp_path):
 
 def test_datamodule_setup(tmp_path):
     _create_dummy_data(tmp_path)
-    dm = SolarSegDataModule(data_root=tmp_path, batch_size=2, val_split=0.2)
+    dm = SolarSegDataModule(data_roots={"test": tmp_path}, batch_size=2, val_split=0.2)
     dm.setup("fit")
-    assert dm.train_ds is not None
-    assert dm.val_ds is not None
-    assert len(dm.train_ds) >= 3
+    assert dm._train_ds is not None
+    assert len(dm._val_ds_list) == 1
+    assert len(dm._train_ds) >= 3
 
 
 def test_dataset_empty_dir(tmp_path):

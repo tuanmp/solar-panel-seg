@@ -8,16 +8,16 @@ from solar_seg.data.preprocessing.augmentations import (
 
 
 def test_training_transforms_output():
-    aug = training_transforms(image_size=384)
+    aug = training_transforms()
     image = np.random.randint(0, 255, (400, 400, 3), dtype=np.uint8)
     mask = np.random.randint(0, 2, (400, 400), dtype=np.uint8)
     instance_mask = np.random.randint(0, 5, (400, 400), dtype=np.int32)
 
     result = aug(image=image, mask=mask, instance_mask=instance_mask)
     assert isinstance(result["image"], torch.Tensor)
-    assert result["image"].shape == (3, 384, 384)
+    assert result["image"].shape == (3, 400, 400)
     assert isinstance(result["mask"], torch.Tensor)
-    assert result["mask"].shape == (384, 384)
+    assert result["mask"].shape == (400, 400)
     assert isinstance(result["instance_mask"], torch.Tensor)
 
 

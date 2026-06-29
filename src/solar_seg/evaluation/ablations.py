@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import lightning as L
 
 from solar_seg.data.preprocessing.dataset import SolarSegDataModule
@@ -27,14 +27,21 @@ def run_ablation(
             overrides=overrides,
         )
 
+    data_roots_raw = OmegaConf.to_object(cfg.data.data_roots)
+    data_roots: dict[str, Path] = {
+        name: Path(root).resolve() for name, root in data_roots_raw.items()
+    }
+
     datamodule = SolarSegDataModule(
-        data_root=Path(cfg.data.data_root),
+        data_roots=data_roots,
         batch_size=cfg.data.batch_size,
         num_workers=cfg.data.num_workers,
         train_transform=training_transforms(),
         val_transform=validation_transforms(),
         val_split=cfg.data.val_split,
     )
+    datamodule.setup("fit")
+    source_names = datamodule.source_names
 
     model = Mask2FormerModule(
         model_name=cfg.model.model_name,
@@ -42,6 +49,7 @@ def run_ablation(
         weight_decay=cfg.model.weight_decay,
         warmup_steps=cfg.model.warmup_steps,
         num_labels=cfg.model.num_labels,
+        source_names=source_names,
     )
 
     trainer = L.Trainer(
@@ -62,7 +70,7 @@ def run_ablation(
     report = {
         "config": cfg.experiment_name,
         "overrides": overrides,
-        "test_metrics": {k: str(v) for k, v in results[0].items()},
+        "test_metrics": [{k: str(v) for k, v in r.items()} for r in results],
     }
     (output_dir / f"{fname}.json").write_text(json.dumps(report, indent=2))
 

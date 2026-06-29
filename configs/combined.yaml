@@ -1,7 +1,5 @@
-# When Bradbury data is available, override with:
-#   uv run python -m solar_seg.train data.data_root=data/processed/bradbury
 defaults:
-  - data: bdappv
+  - data: combined
   - model: mask2former_swin_b
   - trainer: base
   - _self_

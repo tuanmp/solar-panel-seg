@@ -1,5 +1,6 @@
 # @package data
-data_root: data/processed/bdappv
+data_roots:
+  bdappv: data/processed/bdappv
 batch_size: 16
 num_workers: 4
 val_split: 0.15
