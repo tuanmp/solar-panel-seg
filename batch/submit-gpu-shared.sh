@@ -1,16 +1,15 @@
 #!/bin/bash
 # ============================================================================
 # Solar Panel Segmentation — Shared GPU driver (1×A100, 40 GB)
-# Usage:  sbatch batch/submit-gpu-shared.sh uv run python -m solar_seg.train ...
+# Usage:  sbatch batch/submit-gpu-shared.sh [hydra overrides...]
 #
-# Shared QOS: 1× billing throughout, max 4h walltime, no preemption
-# For longer runs (>4h), use submit_solar.sh (preempt QOS, 48h, requeue)
+# For branch experiments, clone first then:
+#   REPO=/pscratch/.../solar-exp-<name> sbatch batch/submit-gpu-shared.sh ...
 # ============================================================================
 
 #SBATCH -A m2616_g
 #SBATCH -C "gpu"
 #SBATCH -q shared
-
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
@@ -25,30 +24,25 @@
 export SLURM_CPU_BIND="cores"
 export PYTHONFAULTHANDLER=1
 
-# Default repo — override with REPO=/path/to/clone for branch experiments
 REPO="${REPO:-/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg}"
-
-# Use the main repo's venv. For branch clones, symlink .venv so uv finds it.
 MAIN_REPO="/global/cfs/cdirs/m3443/usr/pmtuan/solar-panel-seg"
-MAIN_VENV="${MAIN_REPO}/.venv"
-if [ -d "$MAIN_VENV" ] && [ "$REPO" != "$MAIN_REPO" ]; then
-    # Branch clone — symlink .venv so uv uses the shared venv
-    if [ ! -e "${REPO}/.venv" ]; then
-        ln -s "$MAIN_VENV" "${REPO}/.venv"
-    fi
-elif [ -d "$MAIN_VENV" ]; then
-    export VIRTUAL_ENV="$MAIN_VENV"
-    export PATH="${MAIN_VENV}/bin:${PATH}"
+MAIN_DATA="${MAIN_REPO}/data"
+
+cd "$REPO"
+mkdir -p slurm_logs
+
+# Symlink data if this is a clone
+if [ "$REPO" != "$MAIN_REPO" ] && [ ! -e "$REPO/data" ]; then
+    ln -s "$MAIN_DATA" "$REPO/data"
 fi
 
-mkdir -p slurm_logs
+# Sync deps (fast on clones, no-op on main)
+uv sync 2>&1
 
 echo "=============================================="
 echo " Job ID:   ${SLURM_JOB_ID}"
-echo " QOS:      shared (max 4h)"
 echo " Repo:     ${REPO}"
 echo " Command:  uv run python -m solar_seg.train $@"
 echo "=============================================="
 
-cd "$REPO"
 srun uv run python -m solar_seg.train "$@"
