@@ -11,7 +11,7 @@ from transformers import Mask2FormerForUniversalSegmentation
 from solar_seg.evaluation.metrics import mean_iou, panoptic_quality
 
 MAX_VAL_VIZ_SAMPLES = 4
-MAX_METRIC_SAMPLES = 500
+DEFAULT_MAX_METRIC_SAMPLES = 500
 
 
 class Mask2FormerModule(L.LightningModule):
@@ -28,6 +28,7 @@ class Mask2FormerModule(L.LightningModule):
         loss_ce_weight: float = 2.0,
         loss_mask_weight: float = 5.0,
         loss_dice_weight: float = 5.0,
+        max_metric_samples: int = DEFAULT_MAX_METRIC_SAMPLES,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -48,6 +49,8 @@ class Mask2FormerModule(L.LightningModule):
         self._source_names = source_names or ["default"]
         self._val_viz_batches: dict[str, dict[str, torch.Tensor]] = {}
         self._metric_preds: dict[str, list[dict]] = {}
+        # 0 or negative means no cap (evaluate the full test/val set)
+        self._max_metric_samples = max_metric_samples
 
     def forward(self, pixel_values: torch.Tensor) -> dict[str, torch.Tensor]:
         return self.model(pixel_values=pixel_values)
@@ -251,7 +254,8 @@ class Mask2FormerModule(L.LightningModule):
             key = source_name
             if key not in self._metric_preds:
                 self._metric_preds[key] = []
-            if len(self._metric_preds[key]) < MAX_METRIC_SAMPLES:
+            cap = self._max_metric_samples if self._max_metric_samples > 0 else float("inf")
+            if len(self._metric_preds[key]) < cap:
                 # Decode predictions at target resolution
                 gt_H, gt_W = semantic_mask.shape[1:]
                 decoded = self._decode_predictions(
@@ -260,7 +264,7 @@ class Mask2FormerModule(L.LightningModule):
                     target_hw=(gt_H, gt_W),
                 )
                 for b in range(semantic_mask.shape[0]):
-                    if len(self._metric_preds[key]) >= MAX_METRIC_SAMPLES:
+                    if len(self._metric_preds[key]) >= cap:
                         break
                     gt_sem_np = semantic_mask[b].cpu().numpy().astype(np.uint8)
                     inst = instance_mask[b] if instance_mask is not None else None

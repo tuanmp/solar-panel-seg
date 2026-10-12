@@ -63,6 +63,9 @@ def main() -> None:
     parser.add_argument("--devices", type=int, default=1)
     parser.add_argument("--limit-batches", type=float, default=1.0,
                         help="Fraction of test batches to run (default: 1.0)")
+    parser.add_argument("--max-metric-samples", type=int, default=500,
+                        help="Max images per source for PQ/mIoU (0 = full test set). "
+                             "Default: 500")
     args = parser.parse_args()
 
     if not args.ckpt.exists():
@@ -85,6 +88,7 @@ def main() -> None:
     model = Mask2FormerModule.load_from_checkpoint(
         str(args.ckpt),
         source_names=source_names,
+        max_metric_samples=args.max_metric_samples,
     )
 
     trainer = L.Trainer(

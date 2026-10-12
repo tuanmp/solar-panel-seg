@@ -1,0 +1,32 @@
+{
+  "Swin-T": {
+    "params_M": 47,
+    "loss": 8.2154,
+    "miou": 0.8608,
+    "pq": 0.712,
+    "sq": 0.7715,
+    "rq": 0.8914,
+    "best_epoch": 6,
+    "ckpt": "257975694617467313/1ec23b054a1f485580cd26e0ac0f0978/checkpoints/best-epoch=06-val/loss=8.2671.ckpt"
+  },
+  "Swin-B": {
+    "params_M": 110,
+    "loss": 8.0155,
+    "miou": 0.8503,
+    "pq": 0.6941,
+    "sq": 0.7711,
+    "rq": 0.8694,
+    "best_epoch": 5,
+    "ckpt": "267927792754271097/2cb9b6ce92b447f88c47902c81f93243/checkpoints/best-epoch=05-val/loss=8.0593.ckpt"
+  },
+  "Swin-L": {
+    "params_M": 216,
+    "loss": 7.8886,
+    "miou": 0.8613,
+    "pq": 0.7138,
+    "sq": 0.7738,
+    "rq": 0.891,
+    "best_epoch": 13,
+    "ckpt": "736168525124488930/e9ea419c163b4647883eea261bc59ba7/checkpoints/best-epoch=13-val/loss=7.9167.ckpt"
+  }
+}
