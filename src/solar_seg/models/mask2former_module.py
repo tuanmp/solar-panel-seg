@@ -147,10 +147,10 @@ class Mask2FormerModule(L.LightningModule):
         return results
 
     def _compute_and_log_metrics(
-        self, source_name: str, preds: list[dict]
+        self, source_name: str, preds: list[dict], stage: str = "val"
     ) -> None:
         """Compute mIoU and panoptic quality from accumulated predictions."""
-        prefix = f"val/{source_name}"
+        prefix = f"{stage}/{source_name}"
         total_pq, total_sq, total_rq = 0.0, 0.0, 0.0
         total_iou = 0.0
         count = 0
@@ -411,7 +411,7 @@ class Mask2FormerModule(L.LightningModule):
 
     def on_test_epoch_end(self) -> None:
         for source, preds in self._metric_preds.items():
-            self._compute_and_log_metrics(source, preds)
+            self._compute_and_log_metrics(source, preds, stage="test")
         self._metric_preds.clear()
 
     def configure_optimizers(self) -> dict[str, Any]:

@@ -42,13 +42,14 @@ uv run python -m solar_seg.train
 │   ├── models/               # Mask2Former LightningModule
 │   ├── evaluation/           # PQ/SQ/RQ metrics, visualization, ablations
 │   ├── utils/                # Seed, reproducibility
-│   └── train.py              # Hydra + MLflow training entry point
+│   ├── train.py              # Hydra + MLflow training entry point
+│   └── eval.py               # Standalone checkpoint evaluation
 ├── figures/                  # Pipeline visualization figure
 ├── notebooks/
 │   ├── 01_eda.ipynb          # Dataset exploration
 │   └── 02_results.ipynb      # Results analysis
 ├── scripts/                  # Download, preprocessing, visualization
-└── tests/                    # 31 tests across all modules
+└── tests/                    # Tests across all modules
 ```
 
 ## Data Pipeline
@@ -123,6 +124,26 @@ mlflow ui --backend-store-uri mlruns
 ```
 
 ## Evaluation
+
+Evaluate a trained checkpoint on one or more datasets. Metrics (loss, mIoU,
+PQ, SQ, RQ) are reported **separately per source**:
+
+```bash
+# Single dataset
+uv run python -m solar_seg.eval \
+    --ckpt lightning_logs/12345/abc/checkpoints/best.ckpt \
+    --data-roots bdappv=data/processed/bdappv
+
+# Per-source evaluation across both datasets
+uv run python -m solar_seg.eval \
+    --ckpt lightning_logs/12345/abc/checkpoints/best.ckpt \
+    --data-roots bdappv=data/processed/bdappv bradbury=data/processed/bradbury
+```
+
+During training, the same metrics are logged per source every validation epoch
+as `val/{source}/miou`, `val/{source}/pq`, etc.
+
+Metrics can also be used standalone:
 
 ```python
 from solar_seg.evaluation.metrics import panoptic_quality, mean_iou
