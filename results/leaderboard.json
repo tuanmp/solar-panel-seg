@@ -1,0 +1,62 @@
+{
+  "combined_scalejitter": {
+    "test/bdappv/loss": 7.852331638336182,
+    "test/bdappv/loss_mask": 0.06164950132369995,
+    "test/bdappv/loss_dice": 0.625457763671875,
+    "test/bdappv/loss_cross_entropy": 0.06084362789988518,
+    "test/bdappv/miou": 0.8526572585105896,
+    "test/bdappv/pq": 0.694161593914032,
+    "test/bdappv/sq": 0.769725501537323,
+    "test/bdappv/rq": 0.8760743141174316
+  },
+  "baseline_swinb_50ep": {
+    "test/bdappv/loss": 7.635073184967041,
+    "test/bdappv/loss_mask": 0.06397275626659393,
+    "test/bdappv/loss_dice": 0.6087108254432678,
+    "test/bdappv/loss_cross_entropy": 0.06104090064764023,
+    "test/bdappv/miou": 0.8544319272041321,
+    "test/bdappv/pq": 0.6927312016487122,
+    "test/bdappv/sq": 0.7731190919876099,
+    "test/bdappv/rq": 0.8697912096977234
+  },
+  "scalejitter": {
+    "test/bdappv/loss": 7.712324142456055,
+    "test/bdappv/loss_mask": 0.06078680232167244,
+    "test/bdappv/loss_dice": 0.6163902282714844,
+    "test/bdappv/loss_cross_entropy": 0.062472760677337646,
+    "test/bdappv/miou": 0.8521416187286377,
+    "test/bdappv/pq": 0.6834176182746887,
+    "test/bdappv/sq": 0.7646088004112244,
+    "test/bdappv/rq": 0.8583536744117737
+  },
+  "swin_l": {
+    "test/bdappv/loss": 7.879744052886963,
+    "test/bdappv/loss_mask": 0.07340505719184875,
+    "test/bdappv/loss_dice": 0.6433594226837158,
+    "test/bdappv/loss_cross_entropy": 0.046604447066783905,
+    "test/bdappv/miou": 0.862601101398468,
+    "test/bdappv/pq": 0.7107830047607422,
+    "test/bdappv/sq": 0.7710248827934265,
+    "test/bdappv/rq": 0.891846776008606
+  },
+  "bdappv": {
+    "test/bdappv/loss": 8.01785659790039,
+    "test/bdappv/loss_mask": 0.06520812213420868,
+    "test/bdappv/loss_dice": 0.632904589176178,
+    "test/bdappv/loss_cross_entropy": 0.06863479316234589,
+    "test/bdappv/miou": 0.8543566465377808,
+    "test/bdappv/pq": 0.7020256519317627,
+    "test/bdappv/sq": 0.7783997058868408,
+    "test/bdappv/rq": 0.8833507895469666
+  },
+  "swin_t": {
+    "test/bdappv/loss": 8.225913047790527,
+    "test/bdappv/loss_cross_entropy": 0.07814321666955948,
+    "test/bdappv/loss_dice": 0.6333697438240051,
+    "test/bdappv/loss_mask": 0.06531042605638504,
+    "test/bdappv/miou": 0.864406943321228,
+    "test/bdappv/pq": 0.7193813920021057,
+    "test/bdappv/rq": 0.902823805809021,
+    "test/bdappv/sq": 0.7794676423072815
+  }
+}
